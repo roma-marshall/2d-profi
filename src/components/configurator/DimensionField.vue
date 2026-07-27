@@ -6,6 +6,8 @@ const props = withDefaults(
     id: string
     label: string
     hint: string
+    edgeLabel?: string
+    active?: boolean
     modelValue: number
     min: number
     max: number
@@ -13,11 +15,15 @@ const props = withDefaults(
   }>(),
   {
     step: 10,
+    edgeLabel: '',
+    active: false,
   },
 )
 
 const emit = defineEmits<{
   'update:modelValue': [value: number]
+  focus: []
+  blur: []
 }>()
 
 const draftValue = ref(String(props.modelValue))
@@ -77,6 +83,7 @@ const handleInput = (event: Event): void => {
 
 const commitValue = (): void => {
   isFocused.value = false
+  emit('blur')
 
   if (parsedDraft.value === null) {
     draftValue.value = String(props.modelValue)
@@ -117,11 +124,18 @@ const blurInput = (event: KeyboardEvent): void => {
     <div class="mb-2 flex items-end justify-between gap-4">
       <label
         :for="id"
-        class="text-[0.8125rem] font-semibold tracking-[-0.01em] text-stone-800"
+        class="flex items-center gap-2 text-[0.8125rem] font-semibold tracking-[-0.01em] text-stone-800"
       >
+        <span
+          v-if="edgeLabel"
+          class="inline-flex min-w-9 items-center justify-center rounded-md bg-stone-900 px-1.5 py-1 font-mono text-[0.625rem] font-bold tracking-normal text-white"
+          aria-hidden="true"
+        >
+          {{ edgeLabel }}
+        </span>
         {{ label }}
       </label>
-      <span class="text-[0.6875rem] font-medium text-stone-400">
+      <span class="text-[0.6875rem] font-medium text-stone-600">
         {{ min }}–{{ max }} cm
       </span>
     </div>
@@ -137,13 +151,18 @@ const blurInput = (event: KeyboardEvent): void => {
         :step="step"
         :aria-describedby="showError ? errorId : hintId"
         :aria-invalid="showError"
-        class="h-12 w-full rounded-xl border bg-white px-4 pr-14 text-[0.9375rem] font-semibold tabular-nums text-stone-900 outline-none transition placeholder:text-stone-300 focus:ring-4"
+        class="h-11 w-full rounded-lg border bg-white px-3.5 pr-14 text-[0.9375rem] font-semibold tabular-nums text-stone-900 outline-none transition placeholder:text-stone-300 focus:ring-4"
         :class="
           showError
             ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
-            : 'border-stone-200 hover:border-stone-300 focus:border-amber-600 focus:ring-amber-100'
+            : active
+              ? 'border-[#648349] ring-4 ring-[#e7eedf]'
+              : 'border-stone-200 hover:border-stone-300 focus:border-[#648349] focus:ring-[#e7eedf]'
         "
-        @focus="isFocused = true"
+        @focus="
+          isFocused = true;
+          emit('focus')
+        "
         @input="handleInput"
         @blur="commitValue"
         @keydown.enter.prevent="blurInput"
@@ -168,7 +187,7 @@ const blurInput = (event: KeyboardEvent): void => {
     <p
       v-else
       :id="hintId"
-      class="mt-1.5 text-xs leading-5 text-stone-400"
+      class="mt-1.5 text-xs leading-5 text-stone-600"
     >
       {{ hint }}
     </p>

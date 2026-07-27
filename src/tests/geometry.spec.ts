@@ -9,6 +9,7 @@ import {
 } from '@/geometry/registry'
 import { DIMENSION_GUIDE_OFFSET } from '@/geometry/shared'
 import { createTShapeGeometry } from '@/geometry/tShape'
+import type { ShapeGeometry } from '@/types/terrace'
 
 describe('createRectangleGeometry', () => {
   it('returns a proportional closed polygon, bounds, area, and edge guides', () => {
@@ -314,5 +315,232 @@ describe('dimension guide completeness', () => {
     [createCircleGeometry({ diameter: 500 }), ['diameter']],
   ])('returns exactly one guide for each dimension field', (geometry, ids) => {
     expect(geometry.dimensionGuides.map(({ id }) => id)).toEqual(ids)
+  })
+})
+
+describe('stable labeled vertices', () => {
+  it('labels rectangle vertices clockwise and keeps labels stable as it resizes', () => {
+    const initial = createRectangleGeometry({ width: 600, depth: 400 })
+    const resized = createRectangleGeometry({ width: 900, depth: 250 })
+
+    expect(initial.vertices.map(({ id, label, point }) => ({ id, label, point })))
+      .toEqual([
+        { id: 'A', label: 'A', point: { x: 0, y: 0 } },
+        { id: 'B', label: 'B', point: { x: 600, y: 0 } },
+        { id: 'C', label: 'C', point: { x: 600, y: 400 } },
+        { id: 'D', label: 'D', point: { x: 0, y: 400 } },
+      ])
+    expect(resized.vertices.map(({ label }) => label)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+    ])
+    expect(resized.vertices[2]?.point).toEqual({ x: 900, y: 250 })
+  })
+
+  it('uses one stable label for every L and T boundary corner', () => {
+    const lShape = createLShapeGeometry({
+      width: 800,
+      depth: 600,
+      legWidth: 300,
+      legDepth: 250,
+    })
+    const tShape = createTShapeGeometry({
+      width: 900,
+      capDepth: 200,
+      stemWidth: 350,
+      stemDepth: 500,
+    })
+
+    expect(lShape.vertices.map(({ label }) => label)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+    ])
+    expect(tShape.vertices.map(({ label }) => label)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+    ])
+    expect(lShape.vertices[3]).toMatchObject({
+      id: 'D',
+      point: { x: 300, y: 250 },
+    })
+    expect(tShape.vertices[6]).toMatchObject({
+      id: 'G',
+      point: { x: 275, y: 200 },
+    })
+  })
+
+  it('labels a circle at its four cardinal points', () => {
+    const circle = createCircleGeometry({ diameter: 500 })
+
+    expect(circle.vertices.map(({ id, point }) => ({ id, point }))).toEqual([
+      { id: 'A', point: { x: 250, y: 0 } },
+      { id: 'B', point: { x: 500, y: 250 } },
+      { id: 'C', point: { x: 250, y: 500 } },
+      { id: 'D', point: { x: 0, y: 250 } },
+    ])
+    expect(circle.vertices[0]?.labelPosition).toEqual({ x: 250, y: -24 })
+    expect(circle.vertices[1]?.labelPosition).toEqual({ x: 524, y: 250 })
+  })
+})
+
+describe('per-edge SVG dimension metadata', () => {
+  it('describes all rectangle boundary edges and their outward guides', () => {
+    const geometry = createRectangleGeometry({ width: 600, depth: 400 })
+
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 600 },
+      { id: 'BC', length: 400 },
+      { id: 'CD', length: 600 },
+      { id: 'DA', length: 400 },
+    ])
+    expect(geometry.edges[0]).toMatchObject({
+      id: 'AB',
+      startVertexId: 'A',
+      endVertexId: 'B',
+      kind: 'line',
+      path: 'M 0 0 L 600 0',
+      dimension: {
+        measurement: 'linear',
+        value: 600,
+        unit: 'cm',
+        guideStart: { x: 0, y: -40 },
+        guideEnd: { x: 600, y: -40 },
+        guidePath: 'M 0 -40 L 600 -40',
+        labelPosition: { x: 300, y: -58 },
+        labelRotationDegrees: 0,
+      },
+    })
+    expect(geometry.edges[1]?.dimension).toMatchObject({
+      guideStart: { x: 640, y: 0 },
+      guideEnd: { x: 640, y: 400 },
+      labelPosition: { x: 658, y: 200 },
+      labelRotationDegrees: 90,
+    })
+  })
+
+  it('reports every derived L-shape edge length and offsets concave guides into the recess', () => {
+    const geometry = createLShapeGeometry({
+      width: 800,
+      depth: 600,
+      legWidth: 300,
+      legDepth: 250,
+    })
+
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 800 },
+      { id: 'BC', length: 250 },
+      { id: 'CD', length: 500 },
+      { id: 'DE', length: 350 },
+      { id: 'EF', length: 300 },
+      { id: 'FA', length: 600 },
+    ])
+    expect(geometry.edges[2]).toMatchObject({
+      path: 'M 800 250 L 300 250',
+      dimension: {
+        value: 500,
+        guidePath: 'M 800 290 L 300 290',
+        labelPosition: { x: 550, y: 308 },
+      },
+    })
+    expect(geometry.edges[3]?.dimension.guidePath).toBe(
+      'M 340 250 L 340 600',
+    )
+  })
+
+  it('reports cap overhangs, stem sides, and base for every T edge', () => {
+    const geometry = createTShapeGeometry({
+      width: 900,
+      capDepth: 200,
+      stemWidth: 350,
+      stemDepth: 500,
+    })
+
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 900 },
+      { id: 'BC', length: 200 },
+      { id: 'CD', length: 275 },
+      { id: 'DE', length: 500 },
+      { id: 'EF', length: 350 },
+      { id: 'FG', length: 500 },
+      { id: 'GH', length: 275 },
+      { id: 'HA', length: 200 },
+    ])
+    expect(geometry.edges[2]?.dimension.guidePath).toBe(
+      'M 900 240 L 625 240',
+    )
+    expect(geometry.edges[6]?.dimension.guidePath).toBe(
+      'M 275 240 L 0 240',
+    )
+  })
+
+  it('represents a circle as four renderable quarter arcs with arc-length dimensions', () => {
+    const geometry = createCircleGeometry({ diameter: 500 })
+    const quarterCircumference = (Math.PI * 250) / 2
+
+    expect(geometry.edges.map(({ id, kind }) => ({ id, kind }))).toEqual([
+      { id: 'AB', kind: 'arc' },
+      { id: 'BC', kind: 'arc' },
+      { id: 'CD', kind: 'arc' },
+      { id: 'DA', kind: 'arc' },
+    ])
+    expect(geometry.edges[0]).toMatchObject({
+      path: 'M 250 0 A 250 250 0 0 1 500 250',
+      start: { x: 250, y: 0 },
+      end: { x: 500, y: 250 },
+      dimension: {
+        measurement: 'arc-length',
+        unit: 'cm',
+        guideStart: { x: 250, y: -40 },
+        guideEnd: { x: 540, y: 250 },
+        guidePath: 'M 250 -40 A 290 290 0 0 1 540 250',
+        labelRotationDegrees: 45,
+      },
+    })
+    for (const edge of geometry.edges) {
+      expect(edge.length).toBeCloseTo(quarterCircumference)
+      expect(edge.dimension.value).toBeCloseTo(quarterCircumference)
+    }
+  })
+
+  it.each([
+    createRectangleGeometry({ width: 600, depth: 400 }),
+    createLShapeGeometry({
+      width: 800,
+      depth: 600,
+      legWidth: 300,
+      legDepth: 250,
+    }),
+    createTShapeGeometry({
+      width: 900,
+      capDepth: 200,
+      stemWidth: 350,
+      stemDepth: 500,
+    }),
+    createCircleGeometry({ diameter: 500 }),
+  ])('keeps every edge linked to labeled vertices', (geometry: ShapeGeometry) => {
+    const vertices = new Map(
+      geometry.vertices.map((vertex) => [vertex.id, vertex]),
+    )
+
+    expect(geometry.edges).toHaveLength(geometry.vertices.length)
+    for (const edge of geometry.edges) {
+      expect(edge.start).toEqual(vertices.get(edge.startVertexId)?.point)
+      expect(edge.end).toEqual(vertices.get(edge.endVertexId)?.point)
+      expect(Number.isFinite(edge.dimension.labelPosition.x)).toBe(true)
+      expect(Number.isFinite(edge.dimension.labelPosition.y)).toBe(true)
+      expect(edge.dimension.guidePath).toMatch(/^M /)
+    }
   })
 })

@@ -68,9 +68,49 @@ export interface DimensionGuide {
   offset: number
 }
 
+export interface GeometryVertex {
+  /** Stable identifier and display label, e.g. A, B, C. */
+  id: string
+  label: string
+  point: Point
+  /** Suggested SVG text anchor outside the terrace boundary. */
+  labelPosition: Point
+}
+
+export interface EdgeDimensionMetadata {
+  measurement: 'linear' | 'arc-length'
+  value: number
+  unit: 'cm'
+  /** Final endpoints of the offset dimension line or arc. */
+  guideStart: Point
+  guideEnd: Point
+  /** SVG path for the offset dimension line, ready to render. */
+  guidePath: string
+  /** Suggested SVG text anchor and readable text rotation. */
+  labelPosition: Point
+  labelRotationDegrees: number
+}
+
+export interface GeometryEdge {
+  /** Stable boundary identifier derived from its vertices, e.g. AB. */
+  id: string
+  startVertexId: string
+  endVertexId: string
+  kind: 'line' | 'arc'
+  start: Point
+  end: Point
+  /** SVG path for this individual boundary segment. */
+  path: string
+  /** Linear or arc length in centimeters. */
+  length: number
+  dimension: EdgeDimensionMetadata
+}
+
 export interface ShapeGeometry {
   path: string
   points: readonly Point[]
+  vertices: readonly GeometryVertex[]
+  edges: readonly GeometryEdge[]
   bounds: GeometryBounds
   dimensionGuides: readonly DimensionGuide[]
   areaSquareCentimeters: number
@@ -79,6 +119,7 @@ export interface ShapeGeometry {
 export interface DimensionFieldDefinition {
   key: string
   label: string
+  edgeLabel?: string
   hint: string
   min: number | ((dimensions: Record<string, number>) => number)
   max: number | ((dimensions: Record<string, number>) => number)

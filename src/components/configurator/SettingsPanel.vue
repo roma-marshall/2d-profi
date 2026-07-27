@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, watch } from 'vue'
 
 import DimensionField from './DimensionField.vue'
 
@@ -8,7 +8,7 @@ import {
   shapeOptionById,
   shapeOptions,
 } from '@/data/shapes'
-import { woodTextures } from '@/data/textures'
+import { woodTextureById, woodTextures } from '@/data/textures'
 import type {
   BoardDirection,
   TerraceConfig,
@@ -17,10 +17,14 @@ import type {
   WoodTextureId,
 } from '@/types/terrace'
 
+type ConfiguratorSection = 'layout' | 'decking' | 'summary'
+
 const props = defineProps<{
   config: TerraceConfig
   areaSquareMeters: number
   isSaved: boolean
+  activeSection: ConfiguratorSection
+  activeDimensionKey: string | null
 }>()
 
 const emit = defineEmits<{
@@ -28,6 +32,8 @@ const emit = defineEmits<{
   'update-dimension': [payload: { key: string; value: number }]
   'set-texture': [texture: WoodTextureId]
   'set-direction': [direction: BoardDirection]
+  'update:active-section': [section: ConfiguratorSection]
+  'activate-dimension': [key: string | null]
   reset: []
 }>()
 
@@ -49,26 +55,31 @@ const resolvedFields = computed(() =>
     value: dimensionRecord.value[field.key] ?? 0,
     min: resolveFieldLimit(field.min, dimensionRecord.value),
     max: resolveFieldLimit(field.max, dimensionRecord.value),
+    edgeLabel: field.edgeLabel ?? '',
   })),
 )
 
 const areaLabel = computed(() =>
   new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 1,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(props.areaSquareMeters),
+)
+
+const selectedTexture = computed(
+  () => woodTextureById[props.config.texture],
 )
 
 const boardDirections = [
   {
     id: 'horizontal',
     label: 'Horizontal',
-    description: 'Boards run left to right.',
+    description: 'Left to right',
   },
   {
     id: 'vertical',
     label: 'Vertical',
-    description: 'Boards run top to bottom.',
+    description: 'Top to bottom',
   },
 ] as const satisfies readonly {
   id: BoardDirection
@@ -83,310 +94,448 @@ const shapeIconClass: Record<TerraceShape, string> = {
   circle: 'shape-icon--circle',
 }
 
+const selectSection = (section: ConfiguratorSection): void => {
+  emit('update:active-section', section)
+}
+
 const updateDimension = (key: string, value: number): void => {
   if (Number.isFinite(value)) {
     emit('update-dimension', { key, value })
   }
 }
+
+const activateDimension = (key: string): void => {
+  emit('activate-dimension', key)
+}
+
+watch(
+  () => props.activeDimensionKey,
+  async (key) => {
+    if (key === null) {
+      return
+    }
+
+    await nextTick()
+    const input = document.getElementById(
+      `terrace-${props.config.shape}-${key}`,
+    )
+
+    if (input instanceof HTMLInputElement && document.activeElement !== input) {
+      input.focus({ preventScroll: true })
+      input.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  },
+)
 </script>
 
 <template>
   <aside
-    class="w-full rounded-[1.75rem] border border-white/80 bg-[#fbfaf7] shadow-[0_24px_70px_-32px_rgba(50,43,32,0.35)] lg:h-full lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto"
+    class="settings-panel w-full overflow-hidden border border-stone-200 bg-white shadow-[0_16px_45px_rgba(29,35,26,0.08)] lg:h-full"
     aria-label="Terrace settings"
   >
-    <div
-      class="sticky top-0 z-10 flex items-start justify-between gap-5 rounded-t-[1.75rem] border-b border-stone-200/70 bg-[#fbfaf7]/95 px-5 py-5 backdrop-blur-md sm:px-6"
+    <header
+      class="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-4 py-3.5"
     >
       <div>
-        <p
-          class="mb-1 text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-amber-700"
-        >
+        <p class="text-[0.625rem] font-bold tracking-[0.15em] text-[#648349] uppercase">
           Configuration
         </p>
-        <h2
-          class="text-xl font-semibold tracking-[-0.035em] text-stone-900"
-        >
-          Make it yours
+        <h2 class="mt-0.5 text-base font-bold tracking-[-0.02em] text-stone-900">
+          Terrace settings
         </h2>
       </div>
 
       <div
-        class="mt-1 inline-flex shrink-0 items-center gap-2 rounded-full border px-2.5 py-1.5 text-[0.6875rem] font-semibold"
+        class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.625rem] font-semibold"
         :class="
           isSaved
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-            : 'border-stone-200 bg-white text-stone-500'
+            ? 'border-[#d8e4cd] bg-[#f2f7ed] text-[#587441]'
+            : 'border-stone-200 bg-stone-50 text-stone-500'
         "
         aria-live="polite"
       >
         <span
           class="size-1.5 rounded-full"
-          :class="isSaved ? 'bg-emerald-500' : 'bg-stone-300'"
+          :class="isSaved ? 'bg-[#648349]' : 'bg-stone-300'"
           aria-hidden="true"
         />
         {{ isSaved ? 'Saved locally' : 'Not saved' }}
       </div>
-    </div>
+    </header>
 
-    <div class="space-y-7 px-5 py-6 sm:px-6">
-      <fieldset>
-        <legend
-          class="mb-3 flex w-full items-center gap-3 text-sm font-semibold tracking-[-0.015em] text-stone-900"
+    <div class="settings-panel__scroll">
+      <section class="border-b border-stone-200">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 px-4 py-4 text-left outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+          :aria-expanded="activeSection === 'layout'"
+          @click="selectSection('layout')"
         >
           <span
-            class="grid size-6 place-items-center rounded-full bg-stone-900 text-[0.625rem] font-bold text-white"
-            aria-hidden="true"
+            class="grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold"
+            :class="
+              activeSection === 'layout'
+                ? 'bg-[#648349] text-white'
+                : 'bg-stone-100 text-stone-500'
+            "
           >
             1
           </span>
-          Terrace shape
-        </legend>
-
-        <div class="grid grid-cols-2 gap-2.5">
-          <button
-            v-for="option in shapeOptions"
-            :key="option.id"
-            type="button"
-            class="group flex min-h-24 flex-col items-start justify-between rounded-2xl border p-3 text-left outline-none transition duration-200 focus-visible:ring-4 focus-visible:ring-amber-100"
-            :class="
-              config.shape === option.id
-                ? 'border-amber-700 bg-amber-50/80 text-amber-900 shadow-[inset_0_0_0_1px_rgba(180,83,9,0.12)]'
-                : 'border-stone-200 bg-white text-stone-500 hover:-translate-y-0.5 hover:border-stone-300 hover:text-stone-800 hover:shadow-sm'
-            "
-            :aria-pressed="config.shape === option.id"
-            :aria-label="`Select ${option.label} terrace`"
-            @click="emit('select-shape', option.id)"
-          >
-            <span
-              class="shape-icon"
-              :class="shapeIconClass[option.id]"
-              aria-hidden="true"
-            />
-            <span
-              class="mt-3 text-[0.8125rem] font-semibold tracking-[-0.01em]"
-            >
-              {{ option.shortLabel }}
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-bold text-stone-900">
+              Floor plan
             </span>
+            <span class="mt-0.5 block truncate text-[0.6875rem] text-stone-400">
+              Shape and edge dimensions
+            </span>
+          </span>
+          <span
+            class="text-lg text-stone-400 transition"
+            :class="activeSection === 'layout' ? 'rotate-180' : ''"
+            aria-hidden="true"
+          >
+            ⌄
+          </span>
+        </button>
+
+        <div
+          v-show="activeSection === 'layout'"
+          class="border-t border-stone-100 bg-[#fcfcfa] px-4 py-4"
+        >
+          <div
+            class="mb-4 grid grid-cols-2 rounded-lg border border-stone-200 bg-stone-100 p-1 text-xs font-semibold"
+            role="tablist"
+            aria-label="Plan element type"
+          >
+            <button
+              type="button"
+              class="rounded-md bg-white px-3 py-2 text-stone-900 shadow-sm"
+              role="tab"
+              aria-selected="true"
+            >
+              Terrace
+            </button>
+            <span
+              class="cursor-not-allowed rounded-md px-3 py-2 text-center text-stone-400"
+              role="tab"
+              aria-selected="false"
+              aria-disabled="true"
+            >
+              Special element
+            </span>
+          </div>
+
+          <p class="mb-2.5 text-xs font-bold text-stone-800">
+            Select a standard shape
+          </p>
+
+          <div class="grid grid-cols-4 gap-2">
+            <button
+              v-for="option in shapeOptions"
+              :key="option.id"
+              type="button"
+              class="group flex min-h-20 flex-col items-center justify-center gap-2 rounded-lg border px-1.5 py-2 text-center outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7eedf]"
+              :class="
+                config.shape === option.id
+                  ? 'border-[#648349] bg-[#eff5e9] text-[#4d6739] shadow-[inset_0_0_0_1px_rgba(100,131,73,0.12)]'
+                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-800'
+              "
+              :aria-pressed="config.shape === option.id"
+              :aria-label="`Select ${option.label} terrace`"
+              @click="emit('select-shape', option.id)"
+            >
+              <span
+                class="shape-icon"
+                :class="shapeIconClass[option.id]"
+                aria-hidden="true"
+              />
+              <span class="text-[0.625rem] font-bold leading-tight">
+                {{ option.shortLabel }}
+              </span>
+            </button>
+          </div>
+
+          <p class="mt-3 text-[0.6875rem] leading-4 text-stone-400">
+            {{ currentShapeOption.description }}
+          </p>
+
+          <div class="my-4 h-px bg-stone-200" aria-hidden="true" />
+
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <p class="text-xs font-bold text-stone-800">
+              Edge dimensions
+            </p>
+            <span class="text-[0.625rem] font-semibold text-stone-400">
+              centimetres
+            </span>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <DimensionField
+              v-for="field in resolvedFields"
+              :id="`terrace-${config.shape}-${field.key}`"
+              :key="`${config.shape}-${field.key}`"
+              :label="field.label"
+              :edge-label="field.edgeLabel"
+              :hint="field.hint"
+              :model-value="field.value"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              :active="activeDimensionKey === field.key"
+              @focus="activateDimension(field.key)"
+              @blur="emit('activate-dimension', null)"
+              @update:model-value="updateDimension(field.key, $event)"
+            />
+          </div>
+
+          <button
+            type="button"
+            class="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[#648349] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
+            @click="selectSection('decking')"
+          >
+            Continue to decking
           </button>
         </div>
+      </section>
 
-        <p class="mt-2.5 text-xs leading-5 text-stone-400">
-          {{ currentShapeOption.description }}
-        </p>
-      </fieldset>
-
-      <div class="h-px bg-stone-200/80" aria-hidden="true" />
-
-      <fieldset>
-        <legend
-          class="mb-4 flex w-full items-center gap-3 text-sm font-semibold tracking-[-0.015em] text-stone-900"
+      <section class="border-b border-stone-200">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 px-4 py-4 text-left outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+          :aria-expanded="activeSection === 'decking'"
+          @click="selectSection('decking')"
         >
           <span
-            class="grid size-6 place-items-center rounded-full bg-stone-900 text-[0.625rem] font-bold text-white"
-            aria-hidden="true"
+            class="grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold"
+            :class="
+              activeSection === 'decking'
+                ? 'bg-[#648349] text-white'
+                : 'bg-stone-100 text-stone-500'
+            "
           >
             2
           </span>
-          Dimensions
-        </legend>
-
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <DimensionField
-            v-for="field in resolvedFields"
-            :id="`terrace-${config.shape}-${field.key}`"
-            :key="`${config.shape}-${field.key}`"
-            :label="field.label"
-            :hint="field.hint"
-            :model-value="field.value"
-            :min="field.min"
-            :max="field.max"
-            :step="field.step"
-            @update:model-value="updateDimension(field.key, $event)"
-          />
-        </div>
-      </fieldset>
-
-      <div class="h-px bg-stone-200/80" aria-hidden="true" />
-
-      <fieldset>
-        <legend
-          class="mb-4 flex w-full items-center gap-3 text-sm font-semibold tracking-[-0.015em] text-stone-900"
-        >
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-bold text-stone-900">Decking</span>
+            <span class="mt-0.5 block truncate text-[0.6875rem] text-stone-400">
+              {{ selectedTexture.label }} · {{ config.boardDirection }}
+            </span>
+          </span>
           <span
-            class="grid size-6 place-items-center rounded-full bg-stone-900 text-[0.625rem] font-bold text-white"
+            class="text-lg text-stone-400 transition"
+            :class="activeSection === 'decking' ? 'rotate-180' : ''"
             aria-hidden="true"
           >
-            3
+            ⌄
           </span>
-          Wood finish
-        </legend>
+        </button>
 
-        <div class="space-y-2.5">
-          <button
-            v-for="texture in woodTextures"
-            :key="texture.id"
-            type="button"
-            class="group flex w-full items-center gap-3 rounded-2xl border p-2.5 pr-3 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-amber-100"
-            :class="
-              config.texture === texture.id
-                ? 'border-amber-700 bg-amber-50/70'
-                : 'border-stone-200 bg-white hover:border-stone-300'
-            "
-            :aria-pressed="config.texture === texture.id"
-            @click="emit('set-texture', texture.id)"
-          >
-            <span
-              class="relative size-12 shrink-0 overflow-hidden rounded-xl border border-black/10 shadow-inner"
-              :style="{ background: texture.swatch }"
-              aria-hidden="true"
-            >
-              <span
-                class="absolute inset-x-0 top-1/2 h-px bg-white/30"
-              />
-              <span
-                class="absolute inset-y-0 left-1/3 w-px bg-black/10"
-              />
-            </span>
+        <div
+          v-show="activeSection === 'decking'"
+          class="border-t border-stone-100 bg-[#fcfcfa] px-4 py-4"
+        >
+          <p class="mb-2.5 text-xs font-bold text-stone-800">
+            Wood finish
+          </p>
 
-            <span class="min-w-0 flex-1">
-              <span
-                class="block text-[0.8125rem] font-semibold tracking-[-0.01em] text-stone-900"
-              >
-                {{ texture.label }}
-              </span>
-              <span
-                class="mt-0.5 block truncate text-[0.6875rem] text-stone-400"
-              >
-                {{ texture.description }}
-              </span>
-            </span>
-
-            <span
-              class="grid size-5 shrink-0 place-items-center rounded-full border transition"
+          <div class="space-y-2">
+            <button
+              v-for="texture in woodTextures"
+              :key="texture.id"
+              type="button"
+              class="group flex w-full items-center gap-3 rounded-lg border p-2 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7eedf]"
               :class="
                 config.texture === texture.id
-                  ? 'border-amber-700 bg-amber-700'
-                  : 'border-stone-300 bg-white'
+                  ? 'border-[#648349] bg-[#eff5e9]'
+                  : 'border-stone-200 bg-white hover:border-stone-300'
               "
-              aria-hidden="true"
+              :aria-pressed="config.texture === texture.id"
+              @click="emit('set-texture', texture.id)"
             >
               <span
-                v-if="config.texture === texture.id"
-                class="text-[0.7rem] leading-none font-bold text-white"
+                class="texture-swatch size-11 shrink-0 rounded-md border border-black/10 shadow-inner"
+                :style="{ background: texture.swatch }"
+                aria-hidden="true"
+              />
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs font-bold text-stone-900">
+                  {{ texture.label }}
+                </span>
+                <span class="mt-0.5 block truncate text-[0.625rem] text-stone-400">
+                  {{ texture.description }}
+                </span>
+              </span>
+              <span
+                class="grid size-5 shrink-0 place-items-center rounded-full border"
+                :class="
+                  config.texture === texture.id
+                    ? 'border-[#648349] bg-[#648349] text-white'
+                    : 'border-stone-300 bg-white text-transparent'
+                "
+                aria-hidden="true"
               >
                 ✓
               </span>
-            </span>
-          </button>
-        </div>
-      </fieldset>
+            </button>
+          </div>
 
-      <div class="h-px bg-stone-200/80" aria-hidden="true" />
+          <div class="my-4 h-px bg-stone-200" aria-hidden="true" />
 
-      <fieldset>
-        <legend
-          class="mb-4 flex w-full items-center gap-3 text-sm font-semibold tracking-[-0.015em] text-stone-900"
-        >
-          <span
-            class="grid size-6 place-items-center rounded-full bg-stone-900 text-[0.625rem] font-bold text-white"
-            aria-hidden="true"
-          >
-            4
-          </span>
-          Board direction
-        </legend>
+          <p class="mb-2.5 text-xs font-bold text-stone-800">
+            Board direction
+          </p>
 
-        <div class="grid grid-cols-2 gap-2.5">
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="direction in boardDirections"
+              :key="direction.id"
+              type="button"
+              class="rounded-lg border p-2.5 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7eedf]"
+              :class="
+                config.boardDirection === direction.id
+                  ? 'border-[#648349] bg-[#eff5e9]'
+                  : 'border-stone-200 bg-white hover:border-stone-300'
+              "
+              :aria-pressed="config.boardDirection === direction.id"
+              @click="emit('set-direction', direction.id)"
+            >
+              <span
+                class="board-preview block h-10 w-full rounded-md border border-stone-900/10 shadow-inner"
+                :class="`board-preview--${direction.id}`"
+                aria-hidden="true"
+              />
+              <span class="mt-2 block text-[0.6875rem] font-bold text-stone-900">
+                {{ direction.label }}
+              </span>
+              <span class="block text-[0.625rem] text-stone-400">
+                {{ direction.description }}
+              </span>
+            </button>
+          </div>
+
           <button
-            v-for="direction in boardDirections"
-            :key="direction.id"
             type="button"
-            class="rounded-2xl border p-3 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-amber-100"
-            :class="
-              config.boardDirection === direction.id
-                ? 'border-amber-700 bg-amber-50/70'
-                : 'border-stone-200 bg-white hover:border-stone-300'
-            "
-            :aria-pressed="config.boardDirection === direction.id"
-            @click="emit('set-direction', direction.id)"
+            class="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[#648349] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
+            @click="selectSection('summary')"
           >
-            <span
-              class="board-preview block h-11 w-full rounded-lg border border-stone-900/10 shadow-inner"
-              :class="`board-preview--${direction.id}`"
-              aria-hidden="true"
-            />
-            <span
-              class="mt-2.5 block text-[0.8125rem] font-semibold text-stone-900"
-            >
-              {{ direction.label }}
-            </span>
-            <span
-              class="mt-0.5 block text-[0.6875rem] leading-4 text-stone-400"
-            >
-              {{ direction.description }}
-            </span>
+            Review plan
           </button>
         </div>
-      </fieldset>
+      </section>
 
-      <section
-        class="rounded-2xl bg-stone-900 p-4 text-white shadow-[0_18px_38px_-24px_rgba(28,25,23,0.9)]"
-        aria-labelledby="configuration-summary-title"
-      >
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <p
-              id="configuration-summary-title"
-              class="text-[0.6875rem] font-bold uppercase tracking-[0.14em] text-stone-400"
-            >
-              Current terrace
-            </p>
-            <p class="mt-1 text-sm font-semibold">
-              {{ currentShapeOption.label }}
-            </p>
-          </div>
-          <div class="text-right" aria-live="polite">
-            <p class="text-2xl font-semibold tracking-[-0.04em] tabular-nums">
-              {{ areaLabel }}
-            </p>
-            <p class="text-[0.6875rem] font-medium text-stone-400">
-              square metres
-            </p>
-          </div>
-        </div>
-
-        <div class="my-4 h-px bg-white/10" aria-hidden="true" />
-
+      <section>
         <button
           type="button"
-          class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-semibold text-stone-200 outline-none transition hover:border-white/25 hover:bg-white/10 hover:text-white focus-visible:ring-4 focus-visible:ring-white/15"
-          @click="emit('reset')"
+          class="flex w-full items-center gap-3 px-4 py-4 text-left outline-none hover:bg-stone-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+          :aria-expanded="activeSection === 'summary'"
+          @click="selectSection('summary')"
         >
-          <span class="text-base leading-none" aria-hidden="true">↺</span>
-          Reset configuration
+          <span
+            class="grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold"
+            :class="
+              activeSection === 'summary'
+                ? 'bg-[#648349] text-white'
+                : 'bg-stone-100 text-stone-500'
+            "
+          >
+            3
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-bold text-stone-900">Plan summary</span>
+            <span class="mt-0.5 block text-[0.6875rem] text-stone-400">
+              {{ areaLabel }} m² total surface
+            </span>
+          </span>
+          <span
+            class="text-lg text-stone-400 transition"
+            :class="activeSection === 'summary' ? 'rotate-180' : ''"
+            aria-hidden="true"
+          >
+            ⌄
+          </span>
         </button>
+
+        <div
+          v-show="activeSection === 'summary'"
+          class="border-t border-stone-100 bg-[#fcfcfa] px-4 py-4"
+        >
+          <div class="overflow-hidden rounded-lg border border-stone-200 bg-white">
+            <dl class="divide-y divide-stone-100 text-xs">
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Shape</dt>
+                <dd class="font-bold text-stone-900">
+                  {{ currentShapeOption.label }}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Surface</dt>
+                <dd class="font-bold tabular-nums text-stone-900">
+                  {{ areaLabel }} m²
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Finish</dt>
+                <dd class="font-bold text-stone-900">
+                  {{ selectedTexture.label }}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Direction</dt>
+                <dd class="font-bold capitalize text-stone-900">
+                  {{ config.boardDirection }}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <p class="mt-3 text-[0.625rem] leading-4 text-stone-500">
+            {{
+              isSaved
+                ? 'The configuration is stored automatically in this browser.'
+                : 'Local storage is unavailable. Keep this page open to retain the current plan.'
+            }}
+          </p>
+        </div>
       </section>
     </div>
+
+    <footer class="border-t border-stone-200 bg-white p-3">
+      <button
+        type="button"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-100"
+        @click="emit('reset')"
+      >
+        <span class="text-base leading-none" aria-hidden="true">↺</span>
+        Reset configuration
+      </button>
+    </footer>
   </aside>
 </template>
 
 <style scoped>
-.shape-icon {
-  display: block;
-  width: 2.25rem;
-  height: 1.75rem;
-  color: inherit;
-  background: currentColor;
-  opacity: 0.82;
-  transition:
-    opacity 180ms ease,
-    transform 180ms ease;
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.75rem;
 }
 
-button:hover .shape-icon {
-  opacity: 1;
-  transform: scale(1.04);
+.settings-panel__scroll {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #c9c9c1 transparent;
+  scrollbar-width: thin;
+}
+
+.shape-icon {
+  display: block;
+  width: 2rem;
+  height: 1.5rem;
+  color: currentColor;
+  background: currentColor;
+  opacity: 0.84;
 }
 
 .shape-icon--rectangle {
@@ -411,9 +560,13 @@ button:hover .shape-icon {
 }
 
 .shape-icon--circle {
-  width: 1.875rem;
-  height: 1.875rem;
+  width: 1.6rem;
+  height: 1.6rem;
   border-radius: 9999px;
+}
+
+.texture-swatch {
+  background-size: 100% 100%;
 }
 
 .board-preview {
@@ -424,9 +577,9 @@ button:hover .shape-icon {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
-    transparent 9px,
-    rgb(98 56 26 / 42%) 9px,
-    rgb(98 56 26 / 42%) 10px
+    transparent 8px,
+    rgb(98 56 26 / 42%) 8px,
+    rgb(98 56 26 / 42%) 9px
   );
 }
 
@@ -434,9 +587,19 @@ button:hover .shape-icon {
   background-image: repeating-linear-gradient(
     to right,
     transparent 0,
-    transparent 11px,
-    rgb(98 56 26 / 42%) 11px,
-    rgb(98 56 26 / 42%) 12px
+    transparent 10px,
+    rgb(98 56 26 / 42%) 10px,
+    rgb(98 56 26 / 42%) 11px
   );
+}
+
+@media (max-width: 1023px) {
+  .settings-panel {
+    display: block;
+  }
+
+  .settings-panel__scroll {
+    overflow: visible;
+  }
 }
 </style>

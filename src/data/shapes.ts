@@ -77,7 +77,16 @@ export const shapeOptions = [
     label: 'Rectangle',
     shortLabel: 'Rectangle',
     description: 'A simple four-sided terrace.',
-    fields: [commonWidthField, commonDepthField],
+    fields: [
+      {
+        ...commonWidthField,
+        edgeLabel: 'A–B',
+      },
+      {
+        ...commonDepthField,
+        edgeLabel: 'B–C',
+      },
+    ],
   },
   {
     id: 'l-shape',
@@ -87,6 +96,7 @@ export const shapeOptions = [
     fields: [
       {
         ...commonWidthField,
+        edgeLabel: 'A–B',
         min: (dimensions: Record<string, number>) =>
           contextualMinimum(
             readContextValue(
@@ -98,6 +108,7 @@ export const shapeOptions = [
       },
       {
         ...commonDepthField,
+        edgeLabel: 'F–A',
         min: (dimensions: Record<string, number>) =>
           contextualMinimum(
             readContextValue(
@@ -110,6 +121,7 @@ export const shapeOptions = [
       {
         key: 'legWidth',
         label: 'Leg width',
+        edgeLabel: 'E–F',
         hint: 'Width of the vertical leg.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
@@ -125,6 +137,7 @@ export const shapeOptions = [
       {
         key: 'legDepth',
         label: 'Leg depth',
+        edgeLabel: 'B–C',
         hint: 'Depth of the horizontal leg.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
@@ -147,6 +160,7 @@ export const shapeOptions = [
     fields: [
       {
         ...commonWidthField,
+        edgeLabel: 'A–B',
         min: (dimensions: Record<string, number>) =>
           contextualMinimum(
             readContextValue(
@@ -159,6 +173,7 @@ export const shapeOptions = [
       {
         key: 'capDepth',
         label: 'Cap depth',
+        edgeLabel: 'B–C',
         hint: 'Depth of the horizontal top section.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
@@ -175,6 +190,7 @@ export const shapeOptions = [
       {
         key: 'stemWidth',
         label: 'Stem width',
+        edgeLabel: 'E–F',
         hint: 'Width of the centered lower section.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
@@ -190,6 +206,7 @@ export const shapeOptions = [
       {
         key: 'stemDepth',
         label: 'Stem depth',
+        edgeLabel: 'D–E',
         hint: 'Depth below the horizontal cap.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
@@ -214,6 +231,7 @@ export const shapeOptions = [
       {
         key: 'diameter',
         label: 'Diameter',
+        edgeLabel: 'D–B',
         hint: 'The full width through the center.',
         min: MIN_DIMENSION,
         max: MAX_DIMENSION,

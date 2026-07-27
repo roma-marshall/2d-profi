@@ -6,6 +6,7 @@ import {
   createBounds,
   createHorizontalGuide,
   createPolygonPath,
+  createPolygonTopology,
   createVerticalGuide,
 } from './shared'
 
@@ -21,10 +22,12 @@ export function createRectangleGeometry(
     { x: width, y: depth },
     { x: 0, y: depth },
   ] as const
+  const topology = createPolygonTopology(points)
 
   return {
     path: createPolygonPath(points),
     points,
+    ...topology,
     bounds: createBounds(width, depth),
     dimensionGuides: [
       createHorizontalGuide(

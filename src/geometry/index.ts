@@ -8,11 +8,17 @@ export {
 } from './registry'
 export {
   DIMENSION_GUIDE_OFFSET,
+  EDGE_DIMENSION_LABEL_GAP,
+  VERTEX_LABEL_OFFSET,
   assertNotGreaterThan,
   assertPositiveDimensions,
   createBounds,
+  createCircleTopology,
   createHorizontalGuide,
+  createLinePath,
   createPolygonPath,
+  createPolygonTopology,
+  createVertexLabel,
   createVerticalGuide,
   toSvgNumber,
 } from './shared'

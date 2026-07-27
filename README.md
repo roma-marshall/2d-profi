@@ -10,8 +10,12 @@ persists the latest configuration in `localStorage`.
 - Rectangle, L-shaped, T-shaped, and circular terrace plans
 - Shape-specific dimensions in centimeters
 - Instant proportional SVG rendering
-- Dimension lines and values around every plan
+- Vertex labels and dimension lines around every plan edge
+- Clickable edge dimensions linked to their corresponding inputs
 - Three wood finishes and two board directions
+- Three-step floor plan, decking, and review workflow
+- Canvas zoom, fit, grid, dimension, and decking display controls
+- Local plan summary with dimensions and finish selections
 - Context-aware minimum and maximum validation
 - Automatic local persistence and a one-click reset
 - Responsive desktop and mobile layouts
@@ -33,7 +37,8 @@ src/
 
 `TerraceConfig` is the single typed configuration model. Vue components never
 calculate terrace geometry themselves. Each shape has a pure function that
-turns dimensions into an SVG path, points, bounds, area, and dimension guides.
+turns dimensions into an SVG path, points, bounds, area, vertices, edges, and
+dimension metadata.
 `TerracePreview` talks only to the geometry registry, so registering another
 shape does not require changing the preview component.
 
@@ -64,7 +69,7 @@ npm run build
 ```
 
 The geometry test suite covers every shape generator, including paths, points,
-bounds, areas, dimension guides, and registry dispatch.
+bounds, areas, vertex topology, edge dimensions, and registry dispatch.
 
 ## Adding a shape
 

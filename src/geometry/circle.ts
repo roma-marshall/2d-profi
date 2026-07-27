@@ -4,6 +4,7 @@ import {
   DIMENSION_GUIDE_OFFSET,
   assertPositiveDimensions,
   createBounds,
+  createCircleTopology,
   createHorizontalGuide,
   toSvgNumber,
 } from './shared'
@@ -15,12 +16,8 @@ export function createCircleGeometry(
 
   const { diameter } = dimensions
   const radius = diameter / 2
-  const points = [
-    { x: radius, y: 0 },
-    { x: diameter, y: radius },
-    { x: radius, y: diameter },
-    { x: 0, y: radius },
-  ] as const
+  const topology = createCircleTopology(radius)
+  const { points } = topology
   const radiusSvg = toSvgNumber(radius)
   const diameterSvg = toSvgNumber(diameter)
   const path = [
@@ -33,13 +30,15 @@ export function createCircleGeometry(
   return {
     path,
     points,
+    vertices: topology.vertices,
+    edges: topology.edges,
     bounds: createBounds(diameter, diameter),
     dimensionGuides: [
       createHorizontalGuide(
         'diameter',
         diameter,
-        points[3],
-        points[1],
+        points[3]!,
+        points[1]!,
         -(radius + DIMENSION_GUIDE_OFFSET),
       ),
     ],
