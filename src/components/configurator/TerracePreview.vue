@@ -340,7 +340,7 @@ watch(
 
 <template>
   <div
-    class="preview-stage relative min-h-[430px] overflow-hidden lg:h-full lg:min-h-0"
+    class="preview-stage relative min-h-[430px] select-none overflow-hidden lg:h-full lg:min-h-0"
     :class="{ 'preview-stage--grid': showGrid }"
   >
     <div
@@ -733,6 +733,8 @@ watch(
 <style scoped>
 .preview-stage {
   background-color: #f2f3f0;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .preview-stage--grid {
