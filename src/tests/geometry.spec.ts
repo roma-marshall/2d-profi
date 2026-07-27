@@ -115,25 +115,26 @@ describe('createLShapeGeometry', () => {
 })
 
 describe('createTShapeGeometry', () => {
-  it('centers the stem and uses the combined depth for its bounds', () => {
+  it('positions both stem sides independently and uses the combined depth for its bounds', () => {
     const geometry = createTShapeGeometry({
       width: 900,
       capDepth: 200,
-      stemWidth: 350,
+      rightOverhang: 200,
+      leftOverhang: 350,
       stemDepth: 500,
     })
 
     expect(geometry.path).toBe(
-      'M 0 0 L 900 0 L 900 200 L 625 200 L 625 700 L 275 700 L 275 200 L 0 200 Z',
+      'M 0 0 L 900 0 L 900 200 L 700 200 L 700 700 L 350 700 L 350 200 L 0 200 Z',
     )
     expect(geometry.points).toEqual([
       { x: 0, y: 0 },
       { x: 900, y: 0 },
       { x: 900, y: 200 },
-      { x: 625, y: 200 },
-      { x: 625, y: 700 },
-      { x: 275, y: 700 },
-      { x: 275, y: 200 },
+      { x: 700, y: 200 },
+      { x: 700, y: 700 },
+      { x: 350, y: 700 },
+      { x: 350, y: 200 },
       { x: 0, y: 200 },
     ])
     expect(geometry.bounds).toEqual({ x: 0, y: 0, width: 900, height: 700 })
@@ -159,16 +160,16 @@ describe('createTShapeGeometry', () => {
         id: 'stemWidth',
         value: 350,
         orientation: 'horizontal',
-        start: { x: 275, y: 700 },
-        end: { x: 625, y: 700 },
+        start: { x: 350, y: 700 },
+        end: { x: 700, y: 700 },
         offset: DIMENSION_GUIDE_OFFSET,
       },
       {
         id: 'stemDepth',
         value: 500,
         orientation: 'vertical',
-        start: { x: 625, y: 200 },
-        end: { x: 625, y: 700 },
+        start: { x: 700, y: 200 },
+        end: { x: 700, y: 700 },
         offset: DIMENSION_GUIDE_OFFSET,
       },
     ])
@@ -178,7 +179,8 @@ describe('createTShapeGeometry', () => {
     const geometry = createTShapeGeometry({
       width: 801,
       capDepth: 125,
-      stemWidth: 300,
+      rightOverhang: 250.5,
+      leftOverhang: 250.5,
       stemDepth: 450,
     })
 
@@ -238,7 +240,8 @@ describe('geometry validation', () => {
       createTShapeGeometry({
         width: 900,
         capDepth: 200,
-        stemWidth: 901,
+        rightOverhang: 500,
+        leftOverhang: 500,
         stemDepth: 500,
       })],
     ['circle', () => createCircleGeometry({ diameter: Number.NaN })],
@@ -268,7 +271,8 @@ describe('geometry registry', () => {
     const tShapeDimensions = {
       width: 760,
       capDepth: 190,
-      stemWidth: 300,
+      rightOverhang: 230,
+      leftOverhang: 230,
       stemDepth: 410,
     }
     const circleDimensions = { diameter: 475 }
@@ -307,7 +311,8 @@ describe('dimension guide completeness', () => {
       createTShapeGeometry({
         width: 900,
         capDepth: 200,
-        stemWidth: 350,
+        rightOverhang: 275,
+        leftOverhang: 275,
         stemDepth: 500,
       }),
       ['width', 'capDepth', 'stemWidth', 'stemDepth'],
@@ -349,7 +354,8 @@ describe('stable labeled vertices', () => {
     const tShape = createTShapeGeometry({
       width: 900,
       capDepth: 200,
-      stemWidth: 350,
+      rightOverhang: 275,
+      leftOverhang: 275,
       stemDepth: 500,
     })
 
@@ -463,25 +469,26 @@ describe('per-edge SVG dimension metadata', () => {
     const geometry = createTShapeGeometry({
       width: 900,
       capDepth: 200,
-      stemWidth: 350,
+      rightOverhang: 200,
+      leftOverhang: 350,
       stemDepth: 500,
     })
 
     expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
       { id: 'AB', length: 900 },
       { id: 'BC', length: 200 },
-      { id: 'CD', length: 275 },
+      { id: 'CD', length: 200 },
       { id: 'DE', length: 500 },
       { id: 'EF', length: 350 },
       { id: 'FG', length: 500 },
-      { id: 'GH', length: 275 },
+      { id: 'GH', length: 350 },
       { id: 'HA', length: 200 },
     ])
     expect(geometry.edges[2]?.dimension.guidePath).toBe(
-      'M 900 240 L 625 240',
+      'M 900 240 L 700 240',
     )
     expect(geometry.edges[6]?.dimension.guidePath).toBe(
-      'M 275 240 L 0 240',
+      'M 350 240 L 0 240',
     )
   })
 
@@ -525,7 +532,8 @@ describe('per-edge SVG dimension metadata', () => {
     createTShapeGeometry({
       width: 900,
       capDepth: 200,
-      stemWidth: 350,
+      rightOverhang: 275,
+      leftOverhang: 275,
       stemDepth: 500,
     }),
     createCircleGeometry({ diameter: 500 }),

@@ -28,7 +28,8 @@ export interface LShapeDimensions {
 export interface TShapeDimensions {
   width: number
   capDepth: number
-  stemWidth: number
+  rightOverhang: number
+  leftOverhang: number
   stemDepth: number
 }
 

@@ -12,6 +12,7 @@ export const DIMENSION_LIMITS = {
 
 const MIN_DIMENSION = DIMENSION_LIMITS.min
 const MAX_DIMENSION = DIMENSION_LIMITS.max
+const MIN_T_OVERHANG = MIN_DIMENSION / 2
 
 export const defaultDimensions: ShapeDimensionsMap = {
   rectangle: {
@@ -27,7 +28,8 @@ export const defaultDimensions: ShapeDimensionsMap = {
   't-shape': {
     width: 600,
     capDepth: 200,
-    stemWidth: 250,
+    rightOverhang: 175,
+    leftOverhang: 175,
     stemDepth: 350,
   },
   circle: {
@@ -234,7 +236,7 @@ export const shapeOptions = [
     id: 't-shape',
     label: 'T-shaped',
     shortLabel: 'T-shape',
-    description: 'A wide cap with a centered stem.',
+    description: 'A wide cap with independently adjustable side overhangs.',
     fields: [
       {
         ...commonWidthField,
@@ -243,9 +245,15 @@ export const shapeOptions = [
           contextualMinimum(
             readContextValue(
               dimensions,
-              'stemWidth',
-              defaultDimensions['t-shape'].stemWidth,
-            ) + MIN_DIMENSION,
+              'leftOverhang',
+              defaultDimensions['t-shape'].leftOverhang,
+            ) +
+              readContextValue(
+                dimensions,
+                'rightOverhang',
+                defaultDimensions['t-shape'].rightOverhang,
+              ) +
+              MIN_DIMENSION,
           ),
       },
       {
@@ -269,42 +277,21 @@ export const shapeOptions = [
         key: 'rightOverhang',
         label: 'Right overhang',
         edgeLabel: 'D–C',
-        hint: 'Distance from the right cap edge to the centered stem.',
-        min: MIN_DIMENSION / 2,
+        hint: 'Distance from the right cap edge to the stem.',
+        min: MIN_T_OVERHANG,
         max: (dimensions: Record<string, number>) =>
-          (
-            readContextValue(
-              dimensions,
-              'width',
-              defaultDimensions['t-shape'].width,
-            ) - MIN_DIMENSION
-          ) / 2,
-        step: 10,
-        getValue: (dimensions: Record<string, number>) =>
-          (readContextValue(
+          readContextValue(
             dimensions,
             'width',
             defaultDimensions['t-shape'].width,
           ) -
-            readContextValue(
-              dimensions,
-              'stemWidth',
-              defaultDimensions['t-shape'].stemWidth,
-            )) /
-          2,
-        applyValue: (
-          value: number,
-          dimensions: Record<string, number>,
-        ) => ({
-          ...dimensions,
-          stemWidth:
-            readContextValue(
-              dimensions,
-              'width',
-              defaultDimensions['t-shape'].width,
-            ) -
-            value * 2,
-        }),
+          readContextValue(
+            dimensions,
+            'leftOverhang',
+            defaultDimensions['t-shape'].leftOverhang,
+          ) -
+          MIN_DIMENSION,
+        step: 10,
       },
       {
         key: 'stemDepth',
@@ -327,58 +314,75 @@ export const shapeOptions = [
         key: 'stemWidth',
         label: 'Stem width',
         edgeLabel: 'E–F',
-        hint: 'Width of the centered lower section.',
+        hint: 'Width between the two independently positioned sides.',
         min: MIN_DIMENSION,
         max: (dimensions: Record<string, number>) =>
-          contextualMaximum(
-            readContextValue(
-              dimensions,
-              'width',
-              defaultDimensions['t-shape'].width,
-            ) - MIN_DIMENSION,
-          ),
-        step: 10,
-      },
-      {
-        key: 'leftOverhang',
-        label: 'Left overhang',
-        edgeLabel: 'H–G',
-        hint: 'Distance from the left cap edge to the centered stem.',
-        min: MIN_DIMENSION / 2,
-        max: (dimensions: Record<string, number>) =>
-          (
-            readContextValue(
-              dimensions,
-              'width',
-              defaultDimensions['t-shape'].width,
-            ) - MIN_DIMENSION
-          ) / 2,
-        step: 10,
-        getValue: (dimensions: Record<string, number>) =>
-          (readContextValue(
+          readContextValue(
             dimensions,
             'width',
             defaultDimensions['t-shape'].width,
           ) -
-            readContextValue(
-              dimensions,
-              'stemWidth',
-              defaultDimensions['t-shape'].stemWidth,
-            )) /
-          2,
+          readContextValue(
+            dimensions,
+            'leftOverhang',
+            defaultDimensions['t-shape'].leftOverhang,
+          ) -
+          MIN_T_OVERHANG,
+        step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['t-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'leftOverhang',
+            defaultDimensions['t-shape'].leftOverhang,
+          ) -
+          readContextValue(
+            dimensions,
+            'rightOverhang',
+            defaultDimensions['t-shape'].rightOverhang,
+          ),
         applyValue: (
           value: number,
           dimensions: Record<string, number>,
         ) => ({
           ...dimensions,
-          stemWidth:
+          rightOverhang:
             readContextValue(
               dimensions,
               'width',
               defaultDimensions['t-shape'].width,
             ) -
-            value * 2,
+            readContextValue(
+              dimensions,
+              'leftOverhang',
+              defaultDimensions['t-shape'].leftOverhang,
+            ) -
+            value,
         }),
+      },
+      {
+        key: 'leftOverhang',
+        label: 'Left overhang',
+        edgeLabel: 'H–G',
+        hint: 'Distance from the left cap edge to the stem.',
+        min: MIN_T_OVERHANG,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['t-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'rightOverhang',
+            defaultDimensions['t-shape'].rightOverhang,
+          ) -
+          MIN_DIMENSION,
+        step: 10,
       },
     ],
   },
@@ -479,15 +483,32 @@ const normalizeTShape = (
     MIN_DIMENSION,
     MAX_DIMENSION - MIN_DIMENSION,
   )
+  const defaultStemWidth =
+    defaultDimensions['t-shape'].width -
+    defaultDimensions['t-shape'].leftOverhang -
+    defaultDimensions['t-shape'].rightOverhang
+  const legacyStemWidth = clamp(
+    safeNumber(input.stemWidth, defaultStemWidth),
+    MIN_DIMENSION,
+    width - MIN_T_OVERHANG * 2,
+  )
+  const legacyOverhang = (width - legacyStemWidth) / 2
+  const leftOverhang = clamp(
+    safeNumber(input.leftOverhang, legacyOverhang),
+    MIN_T_OVERHANG,
+    width - MIN_DIMENSION - MIN_T_OVERHANG,
+  )
+  const rightOverhang = clamp(
+    safeNumber(input.rightOverhang, legacyOverhang),
+    MIN_T_OVERHANG,
+    width - leftOverhang - MIN_DIMENSION,
+  )
 
   return {
     width,
     capDepth,
-    stemWidth: clamp(
-      safeNumber(input.stemWidth, defaultDimensions['t-shape'].stemWidth),
-      MIN_DIMENSION,
-      width - MIN_DIMENSION,
-    ),
+    rightOverhang,
+    leftOverhang,
     stemDepth: clamp(
       safeNumber(input.stemDepth, defaultDimensions['t-shape'].stemDepth),
       MIN_DIMENSION,

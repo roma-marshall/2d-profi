@@ -232,9 +232,13 @@ export const calculateAreaSquareCentimeters = (
     }
     case 't-shape': {
       const dimensions = normalizeDimensions('t-shape', config.dimensions)
+      const stemWidth =
+        dimensions.width -
+        dimensions.leftOverhang -
+        dimensions.rightOverhang
       return (
         dimensions.width * dimensions.capDepth +
-        dimensions.stemWidth * dimensions.stemDepth
+        stemWidth * dimensions.stemDepth
       )
     }
     case 'circle': {

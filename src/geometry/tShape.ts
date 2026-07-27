@@ -12,7 +12,7 @@ import {
 } from './shared'
 
 /**
- * Produces a top-aligned cap and a horizontally centered stem.
+ * Produces a top-aligned cap with independently positioned stem sides.
  * `stemDepth` excludes the cap, so the overall height is their sum.
  */
 export function createTShapeGeometry(
@@ -20,11 +20,27 @@ export function createTShapeGeometry(
 ): ShapeGeometry {
   assertPositiveDimensions(dimensions)
 
-  const { width, capDepth, stemWidth, stemDepth } = dimensions
-  assertNotGreaterThan(stemWidth, width, 'stemWidth', 'width')
+  const {
+    width,
+    capDepth,
+    rightOverhang,
+    leftOverhang,
+    stemDepth,
+  } = dimensions
+  assertNotGreaterThan(
+    leftOverhang + rightOverhang,
+    width,
+    'combined overhangs',
+    'width',
+  )
 
-  const stemLeft = (width - stemWidth) / 2
-  const stemRight = stemLeft + stemWidth
+  const stemWidth = width - leftOverhang - rightOverhang
+  if (stemWidth <= 0) {
+    throw new RangeError('stemWidth must be greater than 0')
+  }
+
+  const stemLeft = leftOverhang
+  const stemRight = width - rightOverhang
   const totalDepth = capDepth + stemDepth
 
   const points = [

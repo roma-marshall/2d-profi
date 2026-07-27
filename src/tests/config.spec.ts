@@ -84,6 +84,28 @@ describe('terrace configuration migration', () => {
 
     expect(parsed?.decking.startEdgeId).toBe('AB')
   })
+
+  it('migrates a legacy centered T stem to two independent overhangs', () => {
+    const parsed = parseTerraceConfig({
+      shape: 't-shape',
+      dimensions: {
+        width: 900,
+        capDepth: 200,
+        stemWidth: 350,
+        stemDepth: 500,
+      },
+      texture: 'natural-oak',
+      boardDirection: 'horizontal',
+    })
+
+    expect(parsed?.dimensions).toEqual({
+      width: 900,
+      capDepth: 200,
+      rightOverhang: 275,
+      leftOverhang: 275,
+      stemDepth: 500,
+    })
+  })
 })
 
 describe('configuration history', () => {
@@ -162,27 +184,29 @@ describe('derived edge measurements', () => {
     expect(geometry.edges.find((edge) => edge.id === 'DE')?.length).toBe(150)
   })
 
-  it('edits either overhang of the centered T-shape', () => {
+  it('edits T-shape overhangs independently', () => {
     const terrace = useTerraceConfig()
     terrace.selectShape('t-shape')
 
     terrace.updateDimension('rightOverhang', 125)
     expect(terrace.config.value.dimensions).toMatchObject({
       width: 600,
-      stemWidth: 350,
+      rightOverhang: 125,
+      leftOverhang: 175,
     })
 
     terrace.updateDimension('leftOverhang', 150)
     expect(terrace.config.value.dimensions).toMatchObject({
       width: 600,
-      stemWidth: 300,
+      rightOverhang: 125,
+      leftOverhang: 150,
     })
 
     const geometry = createTerraceGeometry(
       terrace.config.value.shape,
       terrace.config.value.dimensions as TerraceDimensions,
     )
-    expect(geometry.edges.find((edge) => edge.id === 'CD')?.length).toBe(150)
+    expect(geometry.edges.find((edge) => edge.id === 'CD')?.length).toBe(125)
     expect(geometry.edges.find((edge) => edge.id === 'GH')?.length).toBe(150)
   })
 })
