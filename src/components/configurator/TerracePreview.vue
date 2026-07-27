@@ -49,6 +49,8 @@ interface RenderedDimensionGuide extends DimensionGuide {
 
 const patternId = `terrace-board-pattern-${useId()}`
 const arrowId = `dimension-arrow-${useId()}`
+const MIN_ZOOM = 0.65
+const MAX_ZOOM = 5
 
 const zoom = ref(1)
 const showDimensions = ref(true)
@@ -352,7 +354,7 @@ const guideLabelBoxWidth = (label: string): number =>
   label.length * labelFontSize.value * 0.58 + labelFontSize.value * 1.25
 
 const setZoom = (nextZoom: number): void => {
-  zoom.value = Math.min(Math.max(nextZoom, 0.65), 2.4)
+  zoom.value = Math.min(Math.max(nextZoom, MIN_ZOOM), MAX_ZOOM)
 }
 
 const resetView = (): void => {
@@ -673,6 +675,9 @@ watch(
         <span class="rounded bg-white px-3 py-1.5 text-stone-900 shadow-sm">
           2D
         </span>
+        <span class="w-12 text-center px-2 py-1.5 tabular-nums text-stone-500">
+          {{ Math.round(zoom * 100) }}%
+        </span>
       </div>
     </div>
 
@@ -723,16 +728,18 @@ watch(
       <button
         type="button"
         class="canvas-tool"
+        :disabled="zoom >= MAX_ZOOM"
         aria-label="Zoom in"
-        @click="setZoom(zoom + 0.2)"
+        @click="setZoom(zoom + 0.25)"
       >
         +
       </button>
       <button
         type="button"
         class="canvas-tool"
+        :disabled="zoom <= MIN_ZOOM"
         aria-label="Zoom out"
-        @click="setZoom(zoom - 0.2)"
+        @click="setZoom(zoom - 0.25)"
       >
         −
       </button>
@@ -771,14 +778,7 @@ watch(
     </div>
 
     <div
-      v-if="!isFreeForm"
-      class="pointer-events-none absolute top-14 right-3 z-10 rounded-md border border-stone-200 bg-white/88 px-2.5 py-1.5 text-[0.625rem] font-bold tracking-[0.1em] text-stone-500 uppercase backdrop-blur"
-    >
-      {{ Math.round(zoom * 100) }}%
-    </div>
-
-    <div
-      v-else
+      v-if="isFreeForm"
       data-free-form-control
       class="absolute top-14 right-3 z-20 rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
       :class="isFreeFormClosed ? 'p-2' : 'w-56 p-3'"
