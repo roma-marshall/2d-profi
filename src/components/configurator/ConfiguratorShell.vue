@@ -578,9 +578,23 @@ onBeforeUnmount(() => {
         "
         :role="notification.type === 'error' ? 'alert' : 'status'"
       >
-        <span aria-hidden="true">
-          {{ notification.type === 'success' ? '✓' : '!' }}
+        <span v-if="notification.type === 'success'" aria-hidden="true">
+          ✓
         </span>
+        <svg
+          v-else
+          class="size-4 shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 8H12.01M12 11V16" />
+          <circle cx="12" cy="12" r="9" />
+        </svg>
         {{ notification.message }}
       </div>
     </Transition>
