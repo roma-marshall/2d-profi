@@ -168,6 +168,8 @@ const labelFontSize = computed(() =>
   Math.max(9, maximumExtent.value * 0.026),
 )
 
+const annotationScale = computed(() => 1 / zoom.value)
+
 const vertexFontSize = computed(() =>
   Math.max(10, maximumExtent.value * 0.025),
 )
@@ -997,7 +999,7 @@ watch(
           />
 
           <g
-            :transform="`translate(${edge.dimension.labelPosition.x} ${edge.dimension.labelPosition.y}) rotate(${edge.dimension.labelRotationDegrees})`"
+            :transform="`translate(${edge.dimension.labelPosition.x} ${edge.dimension.labelPosition.y}) rotate(${edge.dimension.labelRotationDegrees}) scale(${annotationScale})`"
           >
             <rect
               :x="-edgeLabelBoxWidth(edge) / 2"
@@ -1066,7 +1068,7 @@ watch(
             vector-effect="non-scaling-stroke"
           />
           <g
-            :transform="`translate(${guide.labelX} ${guide.labelY}) rotate(${guide.labelRotation})`"
+            :transform="`translate(${guide.labelX} ${guide.labelY}) rotate(${guide.labelRotation}) scale(${annotationScale})`"
           >
             <rect
               :x="-guideLabelBoxWidth(guide.label) / 2"
@@ -1097,7 +1099,7 @@ watch(
         <g
           v-for="vertex in geometry.vertices"
           :key="vertex.id"
-          :transform="`translate(${vertex.labelPosition.x} ${vertex.labelPosition.y})`"
+          :transform="`translate(${vertex.labelPosition.x} ${vertex.labelPosition.y}) scale(${annotationScale})`"
         >
           <circle
             r="10"
@@ -1128,7 +1130,7 @@ watch(
         <g
           v-for="angle in freeFormAngleLabels"
           :key="`angle-${angle.id}`"
-          :transform="`translate(${angle.position.x} ${angle.position.y})`"
+          :transform="`translate(${angle.position.x} ${angle.position.y}) scale(${annotationScale})`"
         >
           <circle
             :r="labelFontSize * 1.5"
@@ -1164,7 +1166,7 @@ watch(
           v-for="(point, index) in freeFormVertices"
           :key="`free-form-handle-${index}`"
           data-free-form-control
-          :transform="`translate(${point.x} ${point.y})`"
+          :transform="`translate(${point.x} ${point.y}) scale(${annotationScale})`"
           tabindex="0"
           role="button"
           :aria-label="`Point ${geometry.vertices[index]?.label ?? index + 1}. Drag to move; press Delete to remove.`"
