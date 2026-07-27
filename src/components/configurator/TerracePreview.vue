@@ -43,6 +43,7 @@ const zoom = ref(1)
 const showDimensions = ref(true)
 const showGrid = ref(true)
 const showDecking = ref(true)
+const isPlanRotated = ref(false)
 const pan = ref<Point>({ x: 0, y: 0 })
 const isPanning = ref(false)
 const panPointerId = ref<number | null>(null)
@@ -86,14 +87,40 @@ const baseViewport = computed(() => {
   }
 })
 
-const viewBox = computed(() => {
+const visibleViewport = computed(() => {
   const viewport = baseViewport.value
+
+  if (!isPlanRotated.value) {
+    return viewport
+  }
+
+  const centerX = viewport.x + viewport.width / 2
+  const centerY = viewport.y + viewport.height / 2
+  return {
+    x: centerX - viewport.height / 2,
+    y: centerY - viewport.width / 2,
+    width: viewport.height,
+    height: viewport.width,
+  }
+})
+
+const viewBox = computed(() => {
+  const viewport = visibleViewport.value
   const width = viewport.width / zoom.value
   const height = viewport.height / zoom.value
   const centerX = viewport.x + viewport.width / 2 + pan.value.x
   const centerY = viewport.y + viewport.height / 2 + pan.value.y
 
   return `${centerX - width / 2} ${centerY - height / 2} ${width} ${height}`
+})
+
+const planTransform = computed(() => {
+  if (!isPlanRotated.value) {
+    return undefined
+  }
+
+  const { x, y, width, height } = geometry.value.bounds
+  return `rotate(90 ${x + width / 2} ${y + height / 2})`
 })
 
 const labelFontSize = computed(() =>
@@ -246,6 +273,11 @@ const resetView = (): void => {
   pan.value = { x: 0, y: 0 }
 }
 
+const togglePlanOrientation = (): void => {
+  isPlanRotated.value = !isPlanRotated.value
+  pan.value = { x: 0, y: 0 }
+}
+
 const handleWheel = (event: WheelEvent): void => {
   const shouldZoom =
     event.ctrlKey ||
@@ -291,8 +323,8 @@ const handlePointerMove = (event: PointerEvent): void => {
   }
 
   const rect = svg.getBoundingClientRect()
-  const viewportWidth = baseViewport.value.width / zoom.value
-  const viewportHeight = baseViewport.value.height / zoom.value
+  const viewportWidth = visibleViewport.value.width / zoom.value
+  const viewportHeight = visibleViewport.value.height / zoom.value
   const deltaX = event.clientX - lastPointerPosition.value.x
   const deltaY = event.clientY - lastPointerPosition.value.y
 
@@ -416,6 +448,19 @@ watch(
       </button>
       <button
         type="button"
+        class="canvas-tool canvas-tool--orientation"
+        :aria-label="
+          isPlanRotated
+            ? 'Switch plan to horizontal orientation'
+            : 'Switch plan to vertical orientation'
+        "
+        :aria-pressed="isPlanRotated"
+        @click="togglePlanOrientation"
+      >
+        <span aria-hidden="true">{{ isPlanRotated ? '↔' : '↕' }}</span>
+      </button>
+      <button
+        type="button"
         class="canvas-tool canvas-tool--fit"
         aria-label="Fit plan to canvas"
         @click="resetView"
@@ -518,6 +563,7 @@ watch(
         </marker>
       </defs>
 
+      <g :transform="planTransform">
       <path
         :d="geometry.path"
         :fill="showDecking ? `url(#${patternId})` : '#d7d8d2'"
@@ -702,6 +748,7 @@ watch(
             {{ vertex.label }}
           </text>
         </g>
+      </g>
       </g>
     </svg>
 
