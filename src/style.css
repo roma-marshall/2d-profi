@@ -110,8 +110,9 @@ button:not(:disabled) {
 
   .print-plan-preview {
     display: block !important;
-    height: 122mm !important;
+    height: 142mm !important;
     min-height: 0 !important;
+    margin-top: 60mm;
     margin-bottom: 5mm;
     overflow: hidden;
     border: 1px solid #d6d3d1;
