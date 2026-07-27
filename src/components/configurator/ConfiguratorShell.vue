@@ -55,7 +55,7 @@ const activeDimensionKey = ref<string | null>(null)
 const activeSpecialElementId = ref<string | null>(null)
 const summaryOpen = ref(false)
 const summaryDialog = ref<HTMLDialogElement | null>(null)
-const summaryTrigger = ref<HTMLButtonElement | null>(null)
+const summaryTrigger = ref<HTMLElement | null>(null)
 const configFileInput = ref<HTMLInputElement | null>(null)
 const notification = ref<{
   type: 'success' | 'error'
@@ -225,6 +225,10 @@ const handleReset = (): void => {
 }
 
 const openSummary = async (): Promise<void> => {
+  summaryTrigger.value =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
   summaryOpen.value = true
   await nextTick()
 
@@ -514,27 +518,6 @@ onBeforeUnmount(() => {
             </svg>
             <span class="hidden lg:inline">Save</span>
           </button>
-          <button
-            ref="summaryTrigger"
-            type="button"
-            class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#648349] px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
-            @click="openSummary"
-          >
-            <svg
-              class="size-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M8 10H21M3 14H21M8 18H21M3 6H21" />
-            </svg>
-            <span class="hidden sm:inline">Plan summary</span>
-            <span class="sm:hidden">Summary</span>
-          </button>
         </div>
       </div>
 
@@ -675,6 +658,7 @@ onBeforeUnmount(() => {
         @set-start-edge="setStartEdge"
         @update:active-section="activeSection = $event"
         @activate-dimension="handleDimensionActivation"
+        @open-summary="openSummary"
         @reset="handleReset"
       />
     </main>

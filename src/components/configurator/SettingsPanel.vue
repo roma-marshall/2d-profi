@@ -62,6 +62,7 @@ const emit = defineEmits<{
   'set-start-edge': [edgeId: string]
   'update:active-section': [section: ConfiguratorSection]
   'activate-dimension': [key: string | null]
+  'open-summary': []
   reset: []
 }>()
 
@@ -1036,7 +1037,27 @@ watch(
       </section>
     </div>
 
-    <footer class="border-t border-stone-200 bg-white p-3">
+    <footer class="space-y-2 border-t border-stone-200 bg-white p-3">
+      <button
+        type="button"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#648349] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
+        aria-label="Open plan review and export options"
+        @click="emit('open-summary')"
+      >
+        <svg
+          class="size-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M8 10H21M3 14H21M8 18H21M3 6H21" />
+        </svg>
+        Review &amp; export
+      </button>
       <button
         type="button"
         class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-100"
