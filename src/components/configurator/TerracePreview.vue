@@ -66,6 +66,8 @@ interface RenderedSpecialElement {
 
 const patternId = `terrace-board-pattern-${useId()}`
 const arrowId = `dimension-arrow-${useId()}`
+const previewTitleId = `terrace-preview-title-${useId()}`
+const previewDescriptionId = `terrace-preview-description-${useId()}`
 const MIN_ZOOM = 0.65
 const MAX_ZOOM = 5
 
@@ -1000,7 +1002,7 @@ watch(
       :viewBox="viewBox"
       preserveAspectRatio="xMidYMid meet"
       role="group"
-      aria-labelledby="terrace-preview-title terrace-preview-description"
+      :aria-labelledby="`${previewTitleId} ${previewDescriptionId}`"
       @wheel="handleWheel"
       @pointerdown="handlePointerDown"
       @pointermove="handlePointerMove"
@@ -1008,10 +1010,10 @@ watch(
       @pointercancel="handlePointerUp"
       @click="handleCanvasClick"
     >
-      <title id="terrace-preview-title">
+      <title :id="previewTitleId">
         {{ shapeLabel }} terrace plan
       </title>
-      <desc id="terrace-preview-description">
+      <desc :id="previewDescriptionId">
         Proportional top-down plan using {{ texture.label }} boards at
         {{ config.decking.angle }} degrees. Dimensions are shown in centimetres.
         {{ config.specialElements.length }} special elements are placed on the

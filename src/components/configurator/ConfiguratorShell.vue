@@ -751,6 +751,16 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="p-5">
+          <TerracePreview
+            class="print-plan-preview hidden"
+            :config="config"
+            :active-dimension-key="null"
+            :active-special-element-id="null"
+            :can-undo="false"
+            :can-redo="false"
+            aria-hidden="true"
+          />
+
           <div
             class="mb-5 flex flex-col gap-3 rounded-lg border border-[#dce7d2] bg-[#f2f7ed] p-4 sm:flex-row sm:items-center sm:justify-between"
           >

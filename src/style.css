@@ -67,6 +67,11 @@ button:not(:disabled) {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   header,
   nav,
   aside,
@@ -101,6 +106,34 @@ button:not(:disabled) {
 
   .plan-summary-dialog header {
     display: flex !important;
+  }
+
+  .print-plan-preview {
+    display: block !important;
+    height: 122mm !important;
+    min-height: 0 !important;
+    margin-bottom: 5mm;
+    overflow: hidden;
+    border: 1px solid #d6d3d1;
+    border-radius: 3mm;
+    break-inside: avoid;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .print-plan-preview.preview-stage {
+    background-color: #f7f7f5;
+  }
+
+  .print-plan-preview.preview-stage > div {
+    display: none !important;
+  }
+
+  .print-plan-preview.preview-stage > svg {
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
   }
 
   .plan-summary-dialog footer {
