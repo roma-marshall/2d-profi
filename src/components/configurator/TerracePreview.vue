@@ -2,6 +2,7 @@
 import { computed, ref, useId, watch } from 'vue'
 
 import { shapeOptionById } from '@/data/shapes'
+import { specialElementOptionById } from '@/data/specialElements'
 import { woodTextureById } from '@/data/textures'
 import {
   FREE_FORM_GRID_SIZE,
@@ -11,11 +12,15 @@ import {
   calculateInteriorAngles,
 } from '@/geometry/freeForm'
 import { createTerraceGeometry } from '@/geometry/registry'
+import { createSpecialElementGeometry } from '@/geometry/specialElements'
 import type {
   DimensionGuide,
   FreeFormDimensions,
   GeometryEdge,
   Point,
+  SpecialElement,
+  SpecialElementGeometry,
+  SpecialElementPatch,
   TerraceConfig,
   TerraceDimensions,
 } from '@/types/terrace'
@@ -23,6 +28,7 @@ import type {
 const props = defineProps<{
   config: TerraceConfig
   activeDimensionKey: string | null
+  activeSpecialElementId: string | null
   canUndo: boolean
   canRedo: boolean
 }>()
@@ -32,6 +38,11 @@ const emit = defineEmits<{
   'update-free-form': [
     payload: { vertices: readonly Point[]; closed: boolean },
   ]
+  'select-special-element': [id: string | null]
+  'update-special-element': [
+    payload: { id: string; patch: SpecialElementPatch },
+  ]
+  'remove-special-element': [id: string]
   undo: []
   redo: []
 }>()
@@ -44,6 +55,12 @@ interface RenderedDimensionGuide extends DimensionGuide {
   labelX: number
   labelY: number
   labelRotation: number
+  label: string
+}
+
+interface RenderedSpecialElement {
+  element: SpecialElement
+  geometry: SpecialElementGeometry
   label: string
 }
 
@@ -69,6 +86,15 @@ const draggedVertexIndex = ref<number | null>(null)
 const vertexPointerId = ref<number | null>(null)
 const vertexPointerStart = ref<Point>({ x: 0, y: 0 })
 const vertexMoved = ref(false)
+const specialElementDraftPosition = ref<{
+  id: string
+  position: Point
+} | null>(null)
+const draggedSpecialElementId = ref<string | null>(null)
+const specialElementPointerId = ref<number | null>(null)
+const specialElementDragOffset = ref<Point>({ x: 0, y: 0 })
+const specialElementPointerStart = ref<Point>({ x: 0, y: 0 })
+const specialElementMoved = ref(false)
 
 const configuredFreeForm = computed<FreeFormDimensions | null>(() =>
   props.config.shape === 'free-form' ? props.config.dimensions : null,
@@ -97,6 +123,33 @@ const geometry = computed(() =>
 )
 const freeFormVertices = computed<readonly Point[]>(() =>
   isFreeForm.value ? geometry.value.points : [],
+)
+
+const renderedSpecialElements = computed<RenderedSpecialElement[]>(() =>
+  props.config.specialElements
+    .map((configuredElement) => {
+      const draft = specialElementDraftPosition.value
+      const element =
+        draft?.id === configuredElement.id
+          ? ({
+              ...configuredElement,
+              position: draft.position,
+            } as SpecialElement)
+          : configuredElement
+
+      return {
+        element,
+        geometry: createSpecialElementGeometry(element),
+        label: specialElementOptionById[element.type].shortLabel,
+      }
+    })
+    .sort((first, second) =>
+      first.element.id === props.activeSpecialElementId
+        ? 1
+        : second.element.id === props.activeSpecialElementId
+          ? -1
+          : 0,
+    ),
 )
 
 const texture = computed(() => woodTextureById[props.config.texture])
@@ -434,6 +487,36 @@ const handlePointerDown = (event: PointerEvent): void => {
 
 const handlePointerMove = (event: PointerEvent): void => {
   if (
+    specialElementPointerId.value === event.pointerId &&
+    draggedSpecialElementId.value !== null
+  ) {
+    const point = pointFromPointer(event)
+    if (point !== null) {
+      specialElementDraftPosition.value = {
+        id: draggedSpecialElementId.value,
+        position: {
+          x:
+            Math.round(
+              (point.x - specialElementDragOffset.value.x) /
+                FREE_FORM_GRID_SIZE,
+            ) * FREE_FORM_GRID_SIZE,
+          y:
+            Math.round(
+              (point.y - specialElementDragOffset.value.y) /
+                FREE_FORM_GRID_SIZE,
+            ) * FREE_FORM_GRID_SIZE,
+        },
+      }
+    }
+    specialElementMoved.value =
+      Math.hypot(
+        event.clientX - specialElementPointerStart.value.x,
+        event.clientY - specialElementPointerStart.value.y,
+      ) > 3
+    return
+  }
+
+  if (
     vertexPointerId.value === event.pointerId &&
     draggedVertexIndex.value !== null &&
     freeFormDraftVertices.value !== null
@@ -479,6 +562,34 @@ const handlePointerMove = (event: PointerEvent): void => {
 
 const handlePointerUp = (event: PointerEvent): void => {
   if (
+    specialElementPointerId.value === event.pointerId &&
+    draggedSpecialElementId.value !== null
+  ) {
+    const svg = svgRef.value
+    if (svg?.hasPointerCapture(event.pointerId)) {
+      svg.releasePointerCapture(event.pointerId)
+    }
+
+    if (
+      specialElementMoved.value &&
+      specialElementDraftPosition.value !== null
+    ) {
+      emit('update-special-element', {
+        id: draggedSpecialElementId.value,
+        patch: {
+          position: specialElementDraftPosition.value.position,
+        },
+      })
+    }
+
+    specialElementDraftPosition.value = null
+    draggedSpecialElementId.value = null
+    specialElementPointerId.value = null
+    specialElementMoved.value = false
+    return
+  }
+
+  if (
     vertexPointerId.value === event.pointerId &&
     draggedVertexIndex.value !== null
   ) {
@@ -519,14 +630,21 @@ const handleCanvasClick = (event: MouseEvent): void => {
     return
   }
 
-  if (!isFreeForm.value) {
-    if (event.target === event.currentTarget) {
-      emit('activate-dimension', null)
-    }
+  const target = event.target
+  if (
+    target instanceof Element &&
+    target.closest('[data-special-element-control]') !== null
+  ) {
     return
   }
 
-  const target = event.target
+  emit('select-special-element', null)
+
+  if (!isFreeForm.value) {
+    emit('activate-dimension', null)
+    return
+  }
+
   if (
     isFreeFormClosed.value ||
     (target instanceof Element &&
@@ -556,6 +674,40 @@ const handleCanvasClick = (event: MouseEvent): void => {
     vertices: [...freeFormVertices.value, point],
     closed: false,
   })
+}
+
+const handleSpecialElementPointerDown = (
+  event: PointerEvent,
+  element: SpecialElement,
+): void => {
+  if (event.button !== 0) {
+    return
+  }
+
+  event.preventDefault()
+  emit('select-special-element', element.id)
+  emit('activate-dimension', null)
+
+  const point = pointFromPointer(event)
+  specialElementMoved.value = false
+  draggedSpecialElementId.value = element.id
+  specialElementPointerId.value = event.pointerId
+  specialElementPointerStart.value = {
+    x: event.clientX,
+    y: event.clientY,
+  }
+  specialElementDraftPosition.value = {
+    id: element.id,
+    position: { ...element.position },
+  }
+  specialElementDragOffset.value =
+    point === null
+      ? { x: 0, y: 0 }
+      : {
+          x: point.x - element.position.x,
+          y: point.y - element.position.y,
+        }
+  svgRef.value?.setPointerCapture(event.pointerId)
 }
 
 const handleVertexPointerDown = (
@@ -645,6 +797,9 @@ watch(
     freeFormDraftVertices.value = null
     draggedVertexIndex.value = null
     vertexPointerId.value = null
+    specialElementDraftPosition.value = null
+    draggedSpecialElementId.value = null
+    specialElementPointerId.value = null
   },
 )
 </script>
@@ -836,7 +991,7 @@ watch(
       ref="svgRef"
       class="absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0"
       :class="
-        isPanning
+        isPanning || draggedSpecialElementId !== null
           ? 'cursor-grabbing'
           : isFreeForm && !isFreeFormClosed
             ? 'cursor-crosshair'
@@ -859,6 +1014,8 @@ watch(
       <desc id="terrace-preview-description">
         Proportional top-down plan using {{ texture.label }} boards at
         {{ config.decking.angle }} degrees. Dimensions are shown in centimetres.
+        {{ config.specialElements.length }} special elements are placed on the
+        plan.
       </desc>
 
       <defs>
@@ -947,6 +1104,94 @@ watch(
           'terrace-shape--draft': isFreeForm && !isFreeFormClosed,
         }"
       />
+
+      <g class="special-elements">
+        <g
+          v-for="renderedElement in renderedSpecialElements"
+          :key="renderedElement.element.id"
+          data-special-element-control
+          class="special-element"
+          :class="[
+            `special-element--${renderedElement.element.type}`,
+            {
+              'special-element--active':
+                activeSpecialElementId === renderedElement.element.id,
+              'special-element--dragging':
+                draggedSpecialElementId === renderedElement.element.id,
+            },
+          ]"
+          :transform="`translate(${renderedElement.element.position.x} ${renderedElement.element.position.y}) rotate(${renderedElement.element.rotation})`"
+          tabindex="0"
+          role="button"
+          :aria-label="`${renderedElement.label}. Drag to move; press Delete to remove.`"
+          @pointerdown.stop="
+            handleSpecialElementPointerDown(
+              $event,
+              renderedElement.element,
+            )
+          "
+          @click.stop="
+            emit('select-special-element', renderedElement.element.id)
+          "
+          @keydown.enter.prevent.stop="
+            emit('select-special-element', renderedElement.element.id)
+          "
+          @keydown.space.prevent.stop="
+            emit('select-special-element', renderedElement.element.id)
+          "
+          @keydown.delete.prevent.stop="
+            emit('remove-special-element', renderedElement.element.id)
+          "
+          @keydown.backspace.prevent.stop="
+            emit('remove-special-element', renderedElement.element.id)
+          "
+        >
+          <path
+            :d="renderedElement.geometry.path"
+            class="special-element__shape"
+            vector-effect="non-scaling-stroke"
+          />
+          <path
+            v-for="detailPath in renderedElement.geometry.detailPaths"
+            :key="detailPath"
+            :d="detailPath"
+            class="special-element__detail"
+            vector-effect="non-scaling-stroke"
+          />
+          <circle
+            v-if="
+              activeSpecialElementId === renderedElement.element.id
+            "
+            r="3"
+            class="special-element__centre"
+            vector-effect="non-scaling-stroke"
+          />
+          <g
+            class="special-element__label"
+            :transform="`rotate(${-renderedElement.element.rotation}) scale(${annotationScale})`"
+          >
+            <rect
+              :x="-(renderedElement.label.length * 7.2 + 20) / 2"
+              y="-12"
+              :width="renderedElement.label.length * 7.2 + 20"
+              height="24"
+              rx="12"
+              vector-effect="non-scaling-stroke"
+            />
+            <text
+              x="0"
+              y="0"
+              font-size="10"
+              font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+              font-weight="800"
+              text-anchor="middle"
+              dominant-baseline="central"
+            >
+              {{ renderedElement.label }}
+            </text>
+          </g>
+        </g>
+      </g>
 
       <template v-if="showDimensions && !hasArcEdges">
         <g
@@ -1263,6 +1508,93 @@ watch(
   stroke: #648349;
   stroke-dasharray: 7 5;
   filter: none;
+}
+
+.special-element {
+  cursor: grab;
+  outline: none;
+}
+
+.special-element:active,
+.special-element--dragging {
+  cursor: grabbing;
+}
+
+.special-element__shape {
+  stroke: #3f463a;
+  stroke-width: 1.5;
+  transition:
+    stroke 120ms ease,
+    filter 120ms ease;
+}
+
+.special-element--house-wall .special-element__shape {
+  fill: #545951;
+  stroke: #292d27;
+}
+
+.special-element--rect-cutout .special-element__shape,
+.special-element--circle-cutout .special-element__shape {
+  fill: #f2f3f0;
+  fill-opacity: 0.97;
+  stroke-dasharray: 5 3;
+}
+
+.special-element--stairs .special-element__shape {
+  fill: #e6dfd3;
+  fill-opacity: 0.94;
+}
+
+.special-element__detail {
+  fill: none;
+  stroke: #4c5149;
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.special-element:hover .special-element__shape,
+.special-element:focus-visible .special-element__shape,
+.special-element--active .special-element__shape {
+  stroke: #4f7a30;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 2px 3px rgb(53 75 39 / 0.28));
+}
+
+.special-element:focus-visible .special-element__shape {
+  stroke-width: 3;
+}
+
+.special-element__centre {
+  fill: #fff;
+  stroke: #4f7a30;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.special-element__label {
+  pointer-events: none;
+}
+
+.special-element__label rect {
+  fill: #fff;
+  fill-opacity: 0.96;
+  stroke: #697065;
+  stroke-opacity: 0.5;
+  stroke-width: 1;
+}
+
+.special-element__label text {
+  fill: #464c43;
+}
+
+.special-element--active .special-element__label rect {
+  fill: #edf5e7;
+  stroke: #4f7a30;
+  stroke-opacity: 1;
+}
+
+.special-element--active .special-element__label text {
+  fill: #3f612d;
 }
 
 .free-form-action {

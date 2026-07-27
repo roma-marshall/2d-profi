@@ -11,6 +11,70 @@ export type WoodTextureId = 'natural-oak' | 'smoked-ash' | 'honey-pine'
 
 export type BoardDirection = 'horizontal' | 'vertical' | 'custom'
 
+export type SpecialElementType =
+  | 'house-wall'
+  | 'rect-cutout'
+  | 'circle-cutout'
+  | 'stairs'
+
+interface SpecialElementBase<TType extends SpecialElementType> {
+  id: string
+  type: TType
+  position: Point
+  /** Clockwise rotation in degrees around `position`. */
+  rotation: number
+}
+
+export interface HouseWallElement
+  extends SpecialElementBase<'house-wall'> {
+  dimensions: {
+    length: number
+    thickness: number
+  }
+}
+
+export interface RectCutoutElement
+  extends SpecialElementBase<'rect-cutout'> {
+  dimensions: {
+    width: number
+    depth: number
+  }
+}
+
+export interface CircleCutoutElement
+  extends SpecialElementBase<'circle-cutout'> {
+  dimensions: {
+    diameter: number
+  }
+}
+
+export interface StairsElement extends SpecialElementBase<'stairs'> {
+  dimensions: {
+    width: number
+    depth: number
+    steps: number
+  }
+}
+
+export type SpecialElement =
+  | HouseWallElement
+  | RectCutoutElement
+  | CircleCutoutElement
+  | StairsElement
+
+export interface SpecialElementPatch {
+  position?: Point
+  rotation?: number
+  dimensions?: Partial<{
+    length: number
+    thickness: number
+    width: number
+    depth: number
+    diameter: number
+    steps: number
+  }>
+}
+
 export interface DeckingLayout {
   /** Board axis angle in degrees, clockwise from horizontal. */
   angle: number
@@ -87,6 +151,7 @@ export type TerraceConfig<
     texture: WoodTextureId
     boardDirection: BoardDirection
     decking: DeckingLayout
+    specialElements: SpecialElement[]
   }
 }[TShape]
 
@@ -157,6 +222,13 @@ export interface ShapeGeometry {
   bounds: GeometryBounds
   dimensionGuides: readonly DimensionGuide[]
   areaSquareCentimeters: number
+}
+
+export interface SpecialElementGeometry {
+  path: string
+  detailPaths: readonly string[]
+  areaSquareCentimeters: number
+  subtractsFromTerrace: boolean
 }
 
 export interface DimensionFieldDefinition {

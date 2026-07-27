@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 
 import SettingsPanel from '@/components/configurator/SettingsPanel.vue'
 import TerracePreview from '@/components/configurator/TerracePreview.vue'
 import { useTerraceConfig } from '@/composables/useTerraceConfig'
 import { shapeOptionById } from '@/data/shapes'
+import { specialElementOptionById } from '@/data/specialElements'
 import { woodTextureById } from '@/data/textures'
 import { createTerraceGeometry } from '@/geometry/registry'
-import type { Point, TerraceDimensions } from '@/types/terrace'
+import type {
+  Point,
+  SpecialElementPatch,
+  SpecialElementType,
+  TerraceDimensions,
+} from '@/types/terrace'
 
 type ConfiguratorSection = 'layout' | 'decking' | 'summary'
 
@@ -21,6 +34,9 @@ const {
   updateDimension,
   setFreeForm,
   updateFreeFormEdge,
+  addSpecialElement,
+  updateSpecialElement,
+  removeSpecialElement,
   setTexture,
   setBoardDirection,
   setBoardAngle,
@@ -36,6 +52,7 @@ const {
 
 const activeSection = ref<ConfiguratorSection>('layout')
 const activeDimensionKey = ref<string | null>(null)
+const activeSpecialElementId = ref<string | null>(null)
 const summaryOpen = ref(false)
 const summaryDialog = ref<HTMLDialogElement | null>(null)
 const summaryTrigger = ref<HTMLButtonElement | null>(null)
@@ -118,6 +135,36 @@ const dimensionSummary = computed(() => {
   }))
 })
 
+const specialElementSummary = computed(() => {
+  const occurrences = new Map<SpecialElementType, number>()
+
+  return config.value.specialElements.map((element) => {
+    const instance = (occurrences.get(element.type) ?? 0) + 1
+    occurrences.set(element.type, instance)
+    let dimensions: string
+    switch (element.type) {
+      case 'house-wall':
+        dimensions = `${element.dimensions.length} × ${element.dimensions.thickness} cm`
+        break
+      case 'rect-cutout':
+        dimensions = `${element.dimensions.width} × ${element.dimensions.depth} cm`
+        break
+      case 'circle-cutout':
+        dimensions = `Ø ${element.dimensions.diameter} cm`
+        break
+      case 'stairs':
+        dimensions = `${element.dimensions.width} × ${element.dimensions.depth} cm · ${element.dimensions.steps} steps`
+        break
+    }
+
+    return {
+      id: element.id,
+      label: `${specialElementOptionById[element.type].shortLabel} ${instance}`,
+      value: `${dimensions} · ${element.rotation}°`,
+    }
+  })
+})
+
 const workflowSteps = [
   {
     id: 'layout',
@@ -158,6 +205,7 @@ const handleShapeSelection = (
   shape: Parameters<typeof selectShape>[0],
 ): void => {
   activeDimensionKey.value = null
+  activeSpecialElementId.value = null
   selectShape(shape)
 }
 
@@ -173,6 +221,7 @@ const handleReset = (): void => {
   resetConfig()
   activeSection.value = 'layout'
   activeDimensionKey.value = null
+  activeSpecialElementId.value = null
 }
 
 const openSummary = async (): Promise<void> => {
@@ -243,6 +292,51 @@ const handleFreeFormEdgeUpdate = ({
   }
 }
 
+const handleSpecialElementAdd = (type: SpecialElementType): void => {
+  const id = addSpecialElement(type)
+  if (id === null) {
+    showNotification(
+      'There is not enough valid space for this element.',
+      'error',
+    )
+    return
+  }
+
+  activeSpecialElementId.value = id
+  activeDimensionKey.value = null
+  activeSection.value = 'layout'
+}
+
+const handleSpecialElementUpdate = ({
+  id,
+  patch,
+}: {
+  id: string
+  patch: SpecialElementPatch
+}): void => {
+  if (!updateSpecialElement(id, patch)) {
+    showNotification(
+      'Keep the element inside the terrace and away from other cutouts.',
+      'error',
+    )
+  }
+}
+
+const handleSpecialElementSelection = (id: string | null): void => {
+  activeSpecialElementId.value = id
+  if (id !== null) {
+    activeDimensionKey.value = null
+    activeSection.value = 'layout'
+  }
+}
+
+const handleSpecialElementRemove = (id: string): void => {
+  removeSpecialElement(id)
+  if (activeSpecialElementId.value === id) {
+    activeSpecialElementId.value = null
+  }
+}
+
 const exportConfig = (): void => {
   const blob = new Blob([JSON.stringify(config.value, null, 2)], {
     type: 'application/json',
@@ -280,6 +374,7 @@ const handleConfigImport = async (event: Event): Promise<void> => {
 
     activeSection.value = 'layout'
     activeDimensionKey.value = null
+    activeSpecialElementId.value = null
     showNotification('Plan loaded successfully.')
   } catch {
     showNotification('This file is not a valid terrace plan.', 'error')
@@ -321,6 +416,18 @@ const handleHistoryShortcut = (event: KeyboardEvent): void => {
 onMounted(() => {
   window.addEventListener('keydown', handleHistoryShortcut)
 })
+
+watch(
+  () => config.value.specialElements.map((element) => element.id),
+  (ids) => {
+    if (
+      activeSpecialElementId.value !== null &&
+      !ids.includes(activeSpecialElementId.value)
+    ) {
+      activeSpecialElementId.value = null
+    }
+  },
+)
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleHistoryShortcut)
@@ -494,9 +601,13 @@ onBeforeUnmount(() => {
           :active-dimension-key="activeDimensionKey"
           :can-undo="canUndo"
           :can-redo="canRedo"
+          :active-special-element-id="activeSpecialElementId"
           class="min-h-0 flex-1"
           @activate-dimension="handleDimensionActivation"
           @update-free-form="handleFreeFormUpdate"
+          @select-special-element="handleSpecialElementSelection"
+          @update-special-element="handleSpecialElementUpdate"
+          @remove-special-element="handleSpecialElementRemove"
           @undo="undo"
           @redo="redo"
         />
@@ -546,9 +657,15 @@ onBeforeUnmount(() => {
         :active-section="activeSection"
         :active-dimension-key="activeDimensionKey"
         :edge-options="edgeOptions"
+        :plan-bounds="geometry.bounds"
+        :active-special-element-id="activeSpecialElementId"
         @select-shape="handleShapeSelection"
         @update-dimension="handleDimensionUpdate"
         @update-free-form-edge="handleFreeFormEdgeUpdate"
+        @add-special-element="handleSpecialElementAdd"
+        @select-special-element="handleSpecialElementSelection"
+        @update-special-element="handleSpecialElementUpdate"
+        @remove-special-element="handleSpecialElementRemove"
         @set-texture="setTexture"
         @set-direction="setBoardDirection"
         @set-board-angle="setBoardAngle"
@@ -675,6 +792,17 @@ onBeforeUnmount(() => {
                   </th>
                   <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
                     {{ field.value }} cm
+                  </td>
+                </tr>
+                <tr
+                  v-for="element in specialElementSummary"
+                  :key="element.id"
+                >
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    {{ element.label }}
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    {{ element.value }}
                   </td>
                 </tr>
                 <tr>

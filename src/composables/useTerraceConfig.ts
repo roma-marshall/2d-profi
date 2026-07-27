@@ -13,17 +13,31 @@ import {
 } from '@/data/decking'
 import { isWoodTextureId } from '@/data/textures'
 import {
+  SPECIAL_ELEMENT_LIMITS,
+  createDefaultSpecialElement,
+  isSpecialElementType,
+  normalizeSpecialElements,
+} from '@/data/specialElements'
+import {
   FREE_FORM_MAX_VERTICES,
   calculatePolygonArea,
   isSimplePolygon,
   resizePolygonEdge,
 } from '@/geometry/freeForm'
 import { createTerraceGeometry } from '@/geometry/registry'
+import {
+  calculateSpecialElementArea,
+  findSpecialElementPlacement,
+  isSpecialElementPlacementValid,
+} from '@/geometry/specialElements'
 import type {
   BoardDirection,
   DeckingLayout,
   FreeFormDimensions,
   Point,
+  SpecialElement,
+  SpecialElementPatch,
+  SpecialElementType,
   TerraceConfig,
   TerraceDimensions,
   TerraceShape,
@@ -39,6 +53,7 @@ const DEFAULT_TEXTURE: WoodTextureId = 'natural-oak'
 const DEFAULT_BOARD_DIRECTION: BoardDirection = 'horizontal'
 const DEFAULT_SHAPE: TerraceShape = 'rectangle'
 const HISTORY_LIMIT = 50
+let specialElementIdSequence = 0
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -125,6 +140,7 @@ const createConfig = <TShape extends TerraceShape>(
   texture: WoodTextureId,
   boardDirection: BoardDirection,
   decking: unknown,
+  specialElements: unknown = [],
 ): TerraceConfig<TShape> => {
   const normalizedDecking = normalizeDeckingLayout(decking, boardDirection)
 
@@ -134,6 +150,7 @@ const createConfig = <TShape extends TerraceShape>(
     texture,
     boardDirection: directionFromAngle(normalizedDecking.angle),
     decking: normalizedDecking,
+    specialElements: normalizeSpecialElements(specialElements),
   }
 }
 
@@ -170,6 +187,7 @@ export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
     texture,
     boardDirection,
     value.decking,
+    value.specialElements,
   )
   if (
     config.shape === 'free-form' &&
@@ -183,6 +201,19 @@ export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
     config.shape,
     config.dimensions as TerraceDimensions,
   )
+  const validSpecialElements: SpecialElement[] = []
+  for (const element of config.specialElements) {
+    if (
+      isSpecialElementPlacementValid(
+        config,
+        element,
+        validSpecialElements,
+      )
+    ) {
+      validSpecialElements.push(element)
+    }
+  }
+  config.specialElements = validSpecialElements
 
   if (
     !geometry.edges.some((edge) => edge.id === config.decking.startEdgeId)
@@ -226,7 +257,7 @@ const getLocalStorage = (): Storage | null => {
   }
 }
 
-export const calculateAreaSquareCentimeters = (
+const calculateBaseAreaSquareCentimeters = (
   config: TerraceConfig,
 ): number => {
   switch (config.shape) {
@@ -289,6 +320,15 @@ export const calculateAreaSquareCentimeters = (
   }
 }
 
+export const calculateAreaSquareCentimeters = (
+  config: TerraceConfig,
+): number =>
+  Math.max(
+    0,
+    calculateBaseAreaSquareCentimeters(config) -
+      calculateSpecialElementArea(config.specialElements),
+  )
+
 export interface UseTerraceConfigReturn {
   config: Ref<TerraceConfig>
   areaSquareMeters: ComputedRef<number>
@@ -299,6 +339,12 @@ export interface UseTerraceConfigReturn {
   updateDimension: (key: string, value: number) => void
   setFreeForm: (vertices: readonly Point[], closed: boolean) => boolean
   updateFreeFormEdge: (edgeId: string, value: number) => boolean
+  addSpecialElement: (type: SpecialElementType) => string | null
+  updateSpecialElement: (
+    id: string,
+    patch: SpecialElementPatch,
+  ) => boolean
+  removeSpecialElement: (id: string) => void
   setTexture: (texture: WoodTextureId) => void
   setBoardDirection: (direction: BoardDirection) => void
   setBoardAngle: (angle: number) => void
@@ -399,6 +445,7 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
           ...config.value.decking,
           startEdgeId: DEFAULT_DECKING_LAYOUT.startEdgeId,
         },
+        [],
       ),
     )
   }
@@ -435,15 +482,28 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
         [key]: nextValue,
       }
 
-    applyConfig(
-      createConfig(
-        shape,
-        nextDimensions,
-        config.value.texture,
-        config.value.boardDirection,
-        config.value.decking,
-      ),
+    const nextConfig = createConfig(
+      shape,
+      nextDimensions,
+      config.value.texture,
+      config.value.boardDirection,
+      config.value.decking,
+      config.value.specialElements,
     )
+    if (
+      nextConfig.specialElements.some(
+        (element, index, elements) =>
+          !isSpecialElementPlacementValid(
+            nextConfig,
+            element,
+            elements.slice(0, index),
+          ),
+      )
+    ) {
+      return
+    }
+
+    applyConfig(nextConfig)
   }
 
   const setFreeForm = (
@@ -466,15 +526,27 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
       vertices: vertices.map((point) => ({ ...point })),
       closed: closed && vertices.length >= 3,
     }
-    applyConfig(
-      createConfig(
-        'free-form',
-        dimensions,
-        config.value.texture,
-        config.value.boardDirection,
-        config.value.decking,
-      ),
+    const nextConfig = createConfig(
+      'free-form',
+      dimensions,
+      config.value.texture,
+      config.value.boardDirection,
+      config.value.decking,
+      config.value.specialElements,
     )
+    if (
+      nextConfig.specialElements.some(
+        (element, index, elements) =>
+          !isSpecialElementPlacementValid(
+            nextConfig,
+            element,
+            elements.slice(0, index),
+          ),
+      )
+    ) {
+      return false
+    }
+    applyConfig(nextConfig)
     return true
   }
 
@@ -501,6 +573,94 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
       value,
     )
     return setFreeForm(vertices, true)
+  }
+
+  const createSpecialElementId = (): string => {
+    specialElementIdSequence += 1
+    return `special-${Date.now().toString(36)}-${specialElementIdSequence}`
+  }
+
+  const addSpecialElement = (
+    type: SpecialElementType,
+  ): string | null => {
+    if (
+      !isSpecialElementType(type) ||
+      config.value.specialElements.length >= SPECIAL_ELEMENT_LIMITS.count
+    ) {
+      return null
+    }
+
+    const element = createDefaultSpecialElement(
+      type,
+      createSpecialElementId(),
+      { x: 0, y: 0 },
+    )
+    const position = findSpecialElementPlacement(config.value, element)
+    if (position === null) {
+      return null
+    }
+
+    const nextElement = { ...element, position } as SpecialElement
+    applyConfig({
+      ...config.value,
+      specialElements: [...config.value.specialElements, nextElement],
+    })
+    return nextElement.id
+  }
+
+  const updateSpecialElement = (
+    id: string,
+    patch: SpecialElementPatch,
+  ): boolean => {
+    const current = config.value.specialElements.find(
+      (element) => element.id === id,
+    )
+    if (current === undefined) {
+      return false
+    }
+
+    const normalized = normalizeSpecialElements([
+      {
+        ...current,
+        position: patch.position ?? current.position,
+        rotation: patch.rotation ?? current.rotation,
+        dimensions: {
+          ...current.dimensions,
+          ...patch.dimensions,
+        },
+      },
+    ])[0]
+    if (
+      normalized === undefined ||
+      !isSpecialElementPlacementValid(
+        config.value,
+        normalized,
+        config.value.specialElements,
+      )
+    ) {
+      return false
+    }
+
+    applyConfig({
+      ...config.value,
+      specialElements: config.value.specialElements.map((element) =>
+        element.id === id ? normalized : element,
+      ),
+    })
+    return true
+  }
+
+  const removeSpecialElement = (id: string): void => {
+    if (!config.value.specialElements.some((element) => element.id === id)) {
+      return
+    }
+
+    applyConfig({
+      ...config.value,
+      specialElements: config.value.specialElements.filter(
+        (element) => element.id !== id,
+      ),
+    })
   }
 
   const setTexture = (texture: WoodTextureId): void => {
@@ -592,6 +752,9 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     updateDimension,
     setFreeForm,
     updateFreeFormEdge,
+    addSpecialElement,
+    updateSpecialElement,
+    removeSpecialElement,
     setTexture,
     setBoardDirection,
     setBoardAngle,

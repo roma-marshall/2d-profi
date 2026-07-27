@@ -11,6 +11,11 @@ persists the latest configuration in `localStorage`.
   plans
 - Snap-to-grid free-form drawing with contour closing and draggable vertices
 - Live free-form edge lengths, internal angles, and self-intersection validation
+- House walls, rectangular and circular cutouts, and stairs as draggable special
+  elements
+- Type-specific special-element dimensions, rotation, placement validation, and
+  keyboard deletion
+- Net surface calculation with rectangular and circular cutout subtraction
 - Shape-specific dimensions in centimeters
 - Instant proportional SVG rendering
 - Vertex labels and dimension lines around every plan edge
@@ -41,14 +46,17 @@ src/
 ```
 
 `TerraceConfig` is the single typed configuration model. It contains the shape,
-dimensions, material, and a normalized `DeckingLayout`. Vue components never
-calculate terrace geometry themselves. Each shape has a pure function that
-turns dimensions into an SVG path, points, bounds, area, vertices, edges, and
-dimension metadata.
+dimensions, material, a normalized `DeckingLayout`, and a discriminated union of
+special elements. Vue components never calculate terrace geometry themselves.
+Each shape has a pure function that turns dimensions into an SVG path, points,
+bounds, area, vertices, edges, and dimension metadata.
 `TerracePreview` talks only to the geometry registry, so registering another
 standard dimension-driven shape does not require changing the preview component.
 Free-form interaction is an editor mode layered over the same registry output;
 its polygon math and validation remain pure functions in `geometry/freeForm.ts`.
+Special-element paths, area effects, point-in-terrace checks, overlap checks, and
+automatic initial placement are pure functions in
+`geometry/specialElements.ts`.
 
 Validation and storage normalization live outside the UI. This prevents invalid
 or outdated `localStorage` data from reaching the renderer and keeps the
@@ -82,8 +90,11 @@ npm run build
 
 The test suites cover every shape generator, including paths, points, bounds,
 areas, vertex topology, edge dimensions, free-form polygon validation, and
-registry dispatch. Configuration tests cover legacy migration, imported value
-normalization, free-form editing, and undo/redo.
+registry dispatch. Special-element tests cover SVG geometry, concave and
+circular containment, rotated cutout overlap, initial placement, area
+subtraction, import normalization, and history. Configuration tests also cover
+legacy migration, imported value normalization, free-form editing, and
+undo/redo.
 
 ## Adding a shape
 
