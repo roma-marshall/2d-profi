@@ -1,4 +1,10 @@
-export type TerraceShape = 'rectangle' | 'l-shape' | 't-shape' | 'circle'
+export type TerraceShape =
+  | 'rectangle'
+  | 'l-shape'
+  | 't-shape'
+  | 'u-shape'
+  | 'o-shape'
+  | 'circle'
 
 export type WoodTextureId = 'natural-oak' | 'smoked-ash' | 'honey-pine'
 
@@ -33,6 +39,23 @@ export interface TShapeDimensions {
   stemDepth: number
 }
 
+export interface UShapeDimensions {
+  width: number
+  depth: number
+  rightLegWidth: number
+  leftLegWidth: number
+  recessDepth: number
+}
+
+export interface OShapeDimensions {
+  width: number
+  depth: number
+  openingWidth: number
+  openingDepth: number
+  openingX: number
+  openingY: number
+}
+
 export interface CircleDimensions {
   diameter: number
 }
@@ -41,6 +64,8 @@ export interface ShapeDimensionsMap {
   rectangle: RectangleDimensions
   'l-shape': LShapeDimensions
   't-shape': TShapeDimensions
+  'u-shape': UShapeDimensions
+  'o-shape': OShapeDimensions
   circle: CircleDimensions
 }
 

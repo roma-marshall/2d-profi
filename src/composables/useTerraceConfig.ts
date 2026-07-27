@@ -241,6 +241,24 @@ export const calculateAreaSquareCentimeters = (
         stemWidth * dimensions.stemDepth
       )
     }
+    case 'u-shape': {
+      const dimensions = normalizeDimensions('u-shape', config.dimensions)
+      const openingWidth =
+        dimensions.width -
+        dimensions.leftLegWidth -
+        dimensions.rightLegWidth
+      return (
+        dimensions.width * dimensions.depth -
+        openingWidth * dimensions.recessDepth
+      )
+    }
+    case 'o-shape': {
+      const dimensions = normalizeDimensions('o-shape', config.dimensions)
+      return (
+        dimensions.width * dimensions.depth -
+        dimensions.openingWidth * dimensions.openingDepth
+      )
+    }
     case 'circle': {
       const dimensions = normalizeDimensions('circle', config.dimensions)
       const radius = dimensions.diameter / 2

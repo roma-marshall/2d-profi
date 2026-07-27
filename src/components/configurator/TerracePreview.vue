@@ -521,6 +521,7 @@ watch(
       <path
         :d="geometry.path"
         :fill="showDecking ? `url(#${patternId})` : '#d7d8d2'"
+        fill-rule="evenodd"
         stroke="#3e443b"
         stroke-width="2"
         stroke-linejoin="round"

@@ -13,6 +13,7 @@ export const DIMENSION_LIMITS = {
 const MIN_DIMENSION = DIMENSION_LIMITS.min
 const MAX_DIMENSION = DIMENSION_LIMITS.max
 const MIN_T_OVERHANG = MIN_DIMENSION / 2
+const MIN_O_BORDER = MIN_DIMENSION / 2
 
 export const defaultDimensions: ShapeDimensionsMap = {
   rectangle: {
@@ -31,6 +32,21 @@ export const defaultDimensions: ShapeDimensionsMap = {
     rightOverhang: 175,
     leftOverhang: 175,
     stemDepth: 350,
+  },
+  'u-shape': {
+    width: 700,
+    depth: 550,
+    rightLegWidth: 200,
+    leftLegWidth: 200,
+    recessDepth: 300,
+  },
+  'o-shape': {
+    width: 700,
+    depth: 550,
+    openingWidth: 350,
+    openingDepth: 250,
+    openingX: 175,
+    openingY: 150,
   },
   circle: {
     diameter: 450,
@@ -387,6 +403,268 @@ export const shapeOptions = [
     ],
   },
   {
+    id: 'u-shape',
+    label: 'U-shaped',
+    shortLabel: 'U-form',
+    description:
+      'A terrace with an open central recess and independent side legs.',
+    fields: [
+      {
+        ...commonWidthField,
+        edgeLabel: 'H–G',
+        min: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'leftLegWidth',
+            defaultDimensions['u-shape'].leftLegWidth,
+          ) +
+          readContextValue(
+            dimensions,
+            'rightLegWidth',
+            defaultDimensions['u-shape'].rightLegWidth,
+          ) +
+          MIN_DIMENSION,
+      },
+      {
+        ...commonDepthField,
+        edgeLabel: 'F–G',
+        min: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'recessDepth',
+            defaultDimensions['u-shape'].recessDepth,
+          ) + MIN_DIMENSION,
+      },
+      {
+        key: 'rightLegWidth',
+        label: 'Right leg width',
+        edgeLabel: 'E–F',
+        hint: 'Width of the right-hand leg.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['u-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'leftLegWidth',
+            defaultDimensions['u-shape'].leftLegWidth,
+          ) -
+          MIN_DIMENSION,
+        step: 10,
+      },
+      {
+        key: 'recessDepth',
+        label: 'Recess depth',
+        edgeLabel: 'D–E',
+        hint: 'Depth of the opening measured from the upper edge.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'depth',
+            defaultDimensions['u-shape'].depth,
+          ) - MIN_DIMENSION,
+        step: 10,
+      },
+      {
+        key: 'openingWidth',
+        label: 'Opening width',
+        edgeLabel: 'C–D',
+        hint: 'Clear width between the two side legs.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['u-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'leftLegWidth',
+            defaultDimensions['u-shape'].leftLegWidth,
+          ) -
+          MIN_DIMENSION,
+        step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['u-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'leftLegWidth',
+            defaultDimensions['u-shape'].leftLegWidth,
+          ) -
+          readContextValue(
+            dimensions,
+            'rightLegWidth',
+            defaultDimensions['u-shape'].rightLegWidth,
+          ),
+        applyValue: (
+          value: number,
+          dimensions: Record<string, number>,
+        ) => ({
+          ...dimensions,
+          rightLegWidth:
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['u-shape'].width,
+            ) -
+            readContextValue(
+              dimensions,
+              'leftLegWidth',
+              defaultDimensions['u-shape'].leftLegWidth,
+            ) -
+            value,
+        }),
+      },
+      {
+        key: 'leftLegWidth',
+        label: 'Left leg width',
+        edgeLabel: 'A–B',
+        hint: 'Width of the left-hand leg.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['u-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'rightLegWidth',
+            defaultDimensions['u-shape'].rightLegWidth,
+          ) -
+          MIN_DIMENSION,
+        step: 10,
+      },
+    ],
+  },
+  {
+    id: 'o-shape',
+    label: 'O-shaped',
+    shortLabel: 'O-form',
+    description:
+      'A rectangular terrace ring with a freely positioned inner opening.',
+    fields: [
+      {
+        ...commonWidthField,
+        edgeLabel: 'A–B',
+        min: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'openingX',
+            defaultDimensions['o-shape'].openingX,
+          ) +
+          readContextValue(
+            dimensions,
+            'openingWidth',
+            defaultDimensions['o-shape'].openingWidth,
+          ) +
+          MIN_O_BORDER,
+      },
+      {
+        ...commonDepthField,
+        edgeLabel: 'B–C',
+        min: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'openingY',
+            defaultDimensions['o-shape'].openingY,
+          ) +
+          readContextValue(
+            dimensions,
+            'openingDepth',
+            defaultDimensions['o-shape'].openingDepth,
+          ) +
+          MIN_O_BORDER,
+      },
+      {
+        key: 'openingDepth',
+        label: 'Opening depth',
+        edgeLabel: 'E–F',
+        hint: 'Vertical size of the inner opening.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'depth',
+            defaultDimensions['o-shape'].depth,
+          ) -
+          readContextValue(
+            dimensions,
+            'openingY',
+            defaultDimensions['o-shape'].openingY,
+          ) -
+          MIN_O_BORDER,
+        step: 10,
+      },
+      {
+        key: 'openingWidth',
+        label: 'Opening width',
+        edgeLabel: 'F–G',
+        hint: 'Horizontal size of the inner opening.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['o-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'openingX',
+            defaultDimensions['o-shape'].openingX,
+          ) -
+          MIN_O_BORDER,
+        step: 10,
+      },
+      {
+        key: 'openingX',
+        label: 'Opening from left',
+        hint: 'Distance from the outer left edge to the opening.',
+        min: MIN_O_BORDER,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['o-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'openingWidth',
+            defaultDimensions['o-shape'].openingWidth,
+          ) -
+          MIN_O_BORDER,
+        step: 10,
+      },
+      {
+        key: 'openingY',
+        label: 'Opening from top',
+        hint: 'Distance from the outer top edge to the opening.',
+        min: MIN_O_BORDER,
+        max: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'depth',
+            defaultDimensions['o-shape'].depth,
+          ) -
+          readContextValue(
+            dimensions,
+            'openingDepth',
+            defaultDimensions['o-shape'].openingDepth,
+          ) -
+          MIN_O_BORDER,
+        step: 10,
+      },
+    ],
+  },
+  {
     id: 'circle',
     label: 'Circle',
     shortLabel: 'Circle',
@@ -409,7 +687,9 @@ export const shapeOptionById: Record<TerraceShape, ShapeOption> = {
   rectangle: shapeOptions[0],
   'l-shape': shapeOptions[1],
   't-shape': shapeOptions[2],
-  circle: shapeOptions[3],
+  'u-shape': shapeOptions[3],
+  'o-shape': shapeOptions[4],
+  circle: shapeOptions[5],
 }
 
 const terraceShapes = new Set<TerraceShape>(
@@ -517,6 +797,100 @@ const normalizeTShape = (
   }
 }
 
+const normalizeUShape = (
+  input: Record<string, unknown>,
+): ShapeDimensionsMap['u-shape'] => {
+  const width = clamp(
+    safeNumber(input.width, defaultDimensions['u-shape'].width),
+    MIN_DIMENSION * 3,
+    MAX_DIMENSION,
+  )
+  const depth = clamp(
+    safeNumber(input.depth, defaultDimensions['u-shape'].depth),
+    MIN_DIMENSION * 2,
+    MAX_DIMENSION,
+  )
+  const leftLegWidth = clamp(
+    safeNumber(
+      input.leftLegWidth,
+      defaultDimensions['u-shape'].leftLegWidth,
+    ),
+    MIN_DIMENSION,
+    width - MIN_DIMENSION * 2,
+  )
+  const rightLegWidth = clamp(
+    safeNumber(
+      input.rightLegWidth,
+      defaultDimensions['u-shape'].rightLegWidth,
+    ),
+    MIN_DIMENSION,
+    width - leftLegWidth - MIN_DIMENSION,
+  )
+
+  return {
+    width,
+    depth,
+    rightLegWidth,
+    leftLegWidth,
+    recessDepth: clamp(
+      safeNumber(
+        input.recessDepth,
+        defaultDimensions['u-shape'].recessDepth,
+      ),
+      MIN_DIMENSION,
+      depth - MIN_DIMENSION,
+    ),
+  }
+}
+
+const normalizeOShape = (
+  input: Record<string, unknown>,
+): ShapeDimensionsMap['o-shape'] => {
+  const width = clamp(
+    safeNumber(input.width, defaultDimensions['o-shape'].width),
+    MIN_DIMENSION + MIN_O_BORDER * 2,
+    MAX_DIMENSION,
+  )
+  const depth = clamp(
+    safeNumber(input.depth, defaultDimensions['o-shape'].depth),
+    MIN_DIMENSION + MIN_O_BORDER * 2,
+    MAX_DIMENSION,
+  )
+  const openingX = clamp(
+    safeNumber(input.openingX, defaultDimensions['o-shape'].openingX),
+    MIN_O_BORDER,
+    width - MIN_DIMENSION - MIN_O_BORDER,
+  )
+  const openingY = clamp(
+    safeNumber(input.openingY, defaultDimensions['o-shape'].openingY),
+    MIN_O_BORDER,
+    depth - MIN_DIMENSION - MIN_O_BORDER,
+  )
+
+  return {
+    width,
+    depth,
+    openingWidth: clamp(
+      safeNumber(
+        input.openingWidth,
+        defaultDimensions['o-shape'].openingWidth,
+      ),
+      MIN_DIMENSION,
+      width - openingX - MIN_O_BORDER,
+    ),
+    openingDepth: clamp(
+      safeNumber(
+        input.openingDepth,
+        defaultDimensions['o-shape'].openingDepth,
+      ),
+      MIN_DIMENSION,
+      depth - openingY - MIN_O_BORDER,
+    ),
+    openingX,
+    openingY,
+  }
+}
+
 const normalizeCircle = (
   input: Record<string, unknown>,
 ): ShapeDimensionsMap['circle'] => ({
@@ -540,6 +914,10 @@ export function normalizeDimensions<TShape extends TerraceShape>(
       return normalizeLShape(dimensions) as ShapeDimensionsMap[TShape]
     case 't-shape':
       return normalizeTShape(dimensions) as ShapeDimensionsMap[TShape]
+    case 'u-shape':
+      return normalizeUShape(dimensions) as ShapeDimensionsMap[TShape]
+    case 'o-shape':
+      return normalizeOShape(dimensions) as ShapeDimensionsMap[TShape]
     case 'circle':
       return normalizeCircle(dimensions) as ShapeDimensionsMap[TShape]
   }

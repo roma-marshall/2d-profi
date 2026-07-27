@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createCircleGeometry } from '@/geometry/circle'
 import { createLShapeGeometry } from '@/geometry/lShape'
+import { createOShapeGeometry } from '@/geometry/oShape'
 import { createRectangleGeometry } from '@/geometry/rectangle'
 import {
   createTerraceGeometry,
@@ -9,6 +10,7 @@ import {
 } from '@/geometry/registry'
 import { DIMENSION_GUIDE_OFFSET } from '@/geometry/shared'
 import { createTShapeGeometry } from '@/geometry/tShape'
+import { createUShapeGeometry } from '@/geometry/uShape'
 import type { ShapeGeometry } from '@/types/terrace'
 
 describe('createRectangleGeometry', () => {
@@ -190,6 +192,72 @@ describe('createTShapeGeometry', () => {
   })
 })
 
+describe('createUShapeGeometry', () => {
+  it('creates independent legs around an open central recess', () => {
+    const geometry = createUShapeGeometry({
+      width: 800,
+      depth: 600,
+      rightLegWidth: 250,
+      leftLegWidth: 200,
+      recessDepth: 300,
+    })
+
+    expect(geometry.path).toBe(
+      'M 0 0 L 200 0 L 200 300 L 550 300 L 550 0 L 800 0 L 800 600 L 0 600 Z',
+    )
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 200 },
+      { id: 'BC', length: 300 },
+      { id: 'CD', length: 350 },
+      { id: 'DE', length: 300 },
+      { id: 'EF', length: 250 },
+      { id: 'FG', length: 600 },
+      { id: 'GH', length: 800 },
+      { id: 'HA', length: 600 },
+    ])
+    expect(geometry.bounds).toEqual({ x: 0, y: 0, width: 800, height: 600 })
+    expect(geometry.areaSquareCentimeters).toBe(375_000)
+  })
+})
+
+describe('createOShapeGeometry', () => {
+  it('creates an outer contour and a counter-wound inner opening', () => {
+    const geometry = createOShapeGeometry({
+      width: 800,
+      depth: 600,
+      openingWidth: 400,
+      openingDepth: 250,
+      openingX: 150,
+      openingY: 175,
+    })
+
+    expect(geometry.path).toBe(
+      'M 0 0 L 800 0 L 800 600 L 0 600 Z M 150 175 L 150 425 L 550 425 L 550 175 Z',
+    )
+    expect(geometry.vertices.map(({ label }) => label)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+      'G',
+      'H',
+    ])
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 800 },
+      { id: 'BC', length: 600 },
+      { id: 'CD', length: 800 },
+      { id: 'DA', length: 600 },
+      { id: 'EF', length: 250 },
+      { id: 'FG', length: 400 },
+      { id: 'GH', length: 250 },
+      { id: 'HE', length: 400 },
+    ])
+    expect(geometry.areaSquareCentimeters).toBe(380_000)
+  })
+})
+
 describe('createCircleGeometry', () => {
   it('returns a two-arc path, cardinal points, circular bounds, and area', () => {
     const geometry = createCircleGeometry({ diameter: 500 })
@@ -244,6 +312,23 @@ describe('geometry validation', () => {
         leftOverhang: 500,
         stemDepth: 500,
       })],
+    ['U shape', () =>
+      createUShapeGeometry({
+        width: 700,
+        depth: 500,
+        rightLegWidth: 400,
+        leftLegWidth: 400,
+        recessDepth: 250,
+      })],
+    ['O shape', () =>
+      createOShapeGeometry({
+        width: 700,
+        depth: 500,
+        openingWidth: 600,
+        openingDepth: 250,
+        openingX: 100,
+        openingY: 100,
+      })],
     ['circle', () => createCircleGeometry({ diameter: Number.NaN })],
   ])('rejects invalid %s dimensions', (_shape, generate) => {
     expect(generate).toThrow(RangeError)
@@ -256,6 +341,8 @@ describe('geometry registry', () => {
       'rectangle',
       'l-shape',
       't-shape',
+      'u-shape',
+      'o-shape',
       'circle',
     ])
   })
@@ -275,6 +362,21 @@ describe('geometry registry', () => {
       leftOverhang: 230,
       stemDepth: 410,
     }
+    const uShapeDimensions = {
+      width: 720,
+      depth: 540,
+      rightLegWidth: 180,
+      leftLegWidth: 220,
+      recessDepth: 280,
+    }
+    const oShapeDimensions = {
+      width: 760,
+      depth: 560,
+      openingWidth: 360,
+      openingDepth: 260,
+      openingX: 180,
+      openingY: 140,
+    }
     const circleDimensions = { diameter: 475 }
 
     expect(createTerraceGeometry('rectangle', rectangleDimensions)).toEqual(
@@ -285,6 +387,12 @@ describe('geometry registry', () => {
     )
     expect(createTerraceGeometry('t-shape', tShapeDimensions)).toEqual(
       createTShapeGeometry(tShapeDimensions),
+    )
+    expect(createTerraceGeometry('u-shape', uShapeDimensions)).toEqual(
+      createUShapeGeometry(uShapeDimensions),
+    )
+    expect(createTerraceGeometry('o-shape', oShapeDimensions)).toEqual(
+      createOShapeGeometry(oShapeDimensions),
     )
     expect(createTerraceGeometry('circle', circleDimensions)).toEqual(
       createCircleGeometry(circleDimensions),
@@ -316,6 +424,34 @@ describe('dimension guide completeness', () => {
         stemDepth: 500,
       }),
       ['width', 'capDepth', 'stemWidth', 'stemDepth'],
+    ],
+    [
+      createUShapeGeometry({
+        width: 800,
+        depth: 600,
+        rightLegWidth: 250,
+        leftLegWidth: 200,
+        recessDepth: 300,
+      }),
+      [
+        'width',
+        'depth',
+        'rightLegWidth',
+        'recessDepth',
+        'openingWidth',
+        'leftLegWidth',
+      ],
+    ],
+    [
+      createOShapeGeometry({
+        width: 800,
+        depth: 600,
+        openingWidth: 400,
+        openingDepth: 250,
+        openingX: 150,
+        openingY: 175,
+      }),
+      ['width', 'depth', 'openingDepth', 'openingWidth'],
     ],
     [createCircleGeometry({ diameter: 500 }), ['diameter']],
   ])('returns exactly one guide for each dimension field', (geometry, ids) => {
@@ -535,6 +671,21 @@ describe('per-edge SVG dimension metadata', () => {
       rightOverhang: 275,
       leftOverhang: 275,
       stemDepth: 500,
+    }),
+    createUShapeGeometry({
+      width: 800,
+      depth: 600,
+      rightLegWidth: 250,
+      leftLegWidth: 200,
+      recessDepth: 300,
+    }),
+    createOShapeGeometry({
+      width: 800,
+      depth: 600,
+      openingWidth: 400,
+      openingDepth: 250,
+      openingX: 150,
+      openingY: 175,
     }),
     createCircleGeometry({ diameter: 500 }),
   ])('keeps every edge linked to labeled vertices', (geometry: ShapeGeometry) => {

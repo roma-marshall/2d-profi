@@ -7,7 +7,7 @@ persists the latest configuration in `localStorage`.
 
 ## Features
 
-- Rectangle, L-shaped, T-shaped, and circular terrace plans
+- Rectangle, L-shaped, T-shaped, U-shaped, O-shaped, and circular plans
 - Shape-specific dimensions in centimeters
 - Instant proportional SVG rendering
 - Vertex labels and dimension lines around every plan edge

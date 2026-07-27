@@ -209,4 +209,38 @@ describe('derived edge measurements', () => {
     expect(geometry.edges.find((edge) => edge.id === 'CD')?.length).toBe(125)
     expect(geometry.edges.find((edge) => edge.id === 'GH')?.length).toBe(150)
   })
+
+  it('edits the U opening while preserving the opposite leg', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('u-shape')
+
+    terrace.updateDimension('openingWidth', 350)
+
+    expect(terrace.config.value.dimensions).toEqual({
+      width: 700,
+      depth: 550,
+      rightLegWidth: 150,
+      leftLegWidth: 200,
+      recessDepth: 300,
+    })
+    expect(terrace.areaSquareMeters.value).toBe(28)
+  })
+
+  it('keeps the O opening inside its outer boundary', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('o-shape')
+
+    terrace.updateDimension('openingX', 100)
+    terrace.updateDimension('openingWidth', 500)
+
+    expect(terrace.config.value.dimensions).toEqual({
+      width: 700,
+      depth: 550,
+      openingWidth: 500,
+      openingDepth: 250,
+      openingX: 100,
+      openingY: 150,
+    })
+    expect(terrace.areaSquareMeters.value).toBe(26)
+  })
 })

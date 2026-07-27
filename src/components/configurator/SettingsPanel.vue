@@ -117,6 +117,8 @@ const shapeIconClass: Record<TerraceShape, string> = {
   rectangle: 'shape-icon--rectangle',
   'l-shape': 'shape-icon--l',
   't-shape': 'shape-icon--t',
+  'u-shape': 'shape-icon--u',
+  'o-shape': 'shape-icon--o',
   circle: 'shape-icon--circle',
 }
 
@@ -255,7 +257,7 @@ watch(
             Select a standard shape
           </p>
 
-          <div class="grid grid-cols-4 gap-2">
+          <div class="grid grid-cols-3 gap-2">
             <button
               v-for="option in shapeOptions"
               :key="option.id"
@@ -682,6 +684,24 @@ watch(
     34% 38%,
     0 38%
   );
+}
+
+.shape-icon--u {
+  clip-path: polygon(
+    0 0,
+    30% 0,
+    30% 68%,
+    70% 68%,
+    70% 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}
+
+.shape-icon--o {
+  border: 0.32rem solid currentColor;
+  background: transparent;
 }
 
 .shape-icon--circle {

@@ -6,8 +6,10 @@ import type {
 
 import { createCircleGeometry } from './circle'
 import { createLShapeGeometry } from './lShape'
+import { createOShapeGeometry } from './oShape'
 import { createRectangleGeometry } from './rectangle'
 import { createTShapeGeometry } from './tShape'
+import { createUShapeGeometry } from './uShape'
 
 export type GeometryGenerator<TShape extends TerraceShape> = (
   dimensions: ShapeDimensionsMap[TShape],
@@ -19,6 +21,8 @@ export const geometryGenerators: {
   rectangle: createRectangleGeometry,
   'l-shape': createLShapeGeometry,
   't-shape': createTShapeGeometry,
+  'u-shape': createUShapeGeometry,
+  'o-shape': createOShapeGeometry,
   circle: createCircleGeometry,
 }
 

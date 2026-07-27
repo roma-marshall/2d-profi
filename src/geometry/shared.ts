@@ -124,6 +124,7 @@ export function createVertexLabel(index: number): string {
 
 export function createPolygonTopology(
   points: readonly Point[],
+  labelStartIndex = 0,
 ): {
   vertices: readonly GeometryVertex[]
   edges: readonly GeometryEdge[]
@@ -132,7 +133,9 @@ export function createPolygonTopology(
     throw new RangeError('A polygon topology requires at least three points')
   }
 
-  const labels = points.map((_, index) => createVertexLabel(index))
+  const labels = points.map((_, index) =>
+    createVertexLabel(labelStartIndex + index),
+  )
   const vertices = points.map((point, index): GeometryVertex => {
     const previous = points[(index - 1 + points.length) % points.length]!
     const next = points[(index + 1) % points.length]!
