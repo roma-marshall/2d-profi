@@ -12,10 +12,18 @@ import {
   DEFAULT_DECKING_LAYOUT,
 } from '@/data/decking'
 import { isWoodTextureId } from '@/data/textures'
+import {
+  FREE_FORM_MAX_VERTICES,
+  calculatePolygonArea,
+  isSimplePolygon,
+  resizePolygonEdge,
+} from '@/geometry/freeForm'
 import { createTerraceGeometry } from '@/geometry/registry'
 import type {
   BoardDirection,
   DeckingLayout,
+  FreeFormDimensions,
+  Point,
   TerraceConfig,
   TerraceDimensions,
   TerraceShape,
@@ -163,6 +171,14 @@ export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
     boardDirection,
     value.decking,
   )
+  if (
+    config.shape === 'free-form' &&
+    config.dimensions.closed &&
+    !isSimplePolygon(config.dimensions.vertices)
+  ) {
+    return null
+  }
+
   const geometry = createTerraceGeometry(
     config.shape,
     config.dimensions as TerraceDimensions,
@@ -259,6 +275,12 @@ export const calculateAreaSquareCentimeters = (
         dimensions.openingWidth * dimensions.openingDepth
       )
     }
+    case 'free-form': {
+      const dimensions = normalizeDimensions('free-form', config.dimensions)
+      return dimensions.closed
+        ? calculatePolygonArea(dimensions.vertices)
+        : 0
+    }
     case 'circle': {
       const dimensions = normalizeDimensions('circle', config.dimensions)
       const radius = dimensions.diameter / 2
@@ -275,6 +297,8 @@ export interface UseTerraceConfigReturn {
   canRedo: ComputedRef<boolean>
   selectShape: (shape: TerraceShape) => void
   updateDimension: (key: string, value: number) => void
+  setFreeForm: (vertices: readonly Point[], closed: boolean) => boolean
+  updateFreeFormEdge: (edgeId: string, value: number) => boolean
   setTexture: (texture: WoodTextureId) => void
   setBoardDirection: (direction: BoardDirection) => void
   setBoardAngle: (angle: number) => void
@@ -422,6 +446,63 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     )
   }
 
+  const setFreeForm = (
+    vertices: readonly Point[],
+    closed: boolean,
+  ): boolean => {
+    if (
+      config.value.shape !== 'free-form' ||
+      vertices.length > FREE_FORM_MAX_VERTICES ||
+      vertices.some(
+        (point) =>
+          !Number.isFinite(point.x) || !Number.isFinite(point.y),
+      ) ||
+      (closed && !isSimplePolygon(vertices))
+    ) {
+      return false
+    }
+
+    const dimensions: FreeFormDimensions = {
+      vertices: vertices.map((point) => ({ ...point })),
+      closed: closed && vertices.length >= 3,
+    }
+    applyConfig(
+      createConfig(
+        'free-form',
+        dimensions,
+        config.value.texture,
+        config.value.boardDirection,
+        config.value.decking,
+      ),
+    )
+    return true
+  }
+
+  const updateFreeFormEdge = (
+    edgeId: string,
+    value: number,
+  ): boolean => {
+    if (config.value.shape !== 'free-form') {
+      return false
+    }
+
+    const geometry = createTerraceGeometry(
+      'free-form',
+      config.value.dimensions,
+    )
+    const edgeIndex = geometry.edges.findIndex((edge) => edge.id === edgeId)
+    if (edgeIndex < 0) {
+      return false
+    }
+
+    const vertices = resizePolygonEdge(
+      config.value.dimensions.vertices,
+      edgeIndex,
+      value,
+    )
+    return setFreeForm(vertices, true)
+  }
+
   const setTexture = (texture: WoodTextureId): void => {
     if (!isWoodTextureId(texture) || texture === config.value.texture) {
       return
@@ -509,6 +590,8 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     canRedo,
     selectShape,
     updateDimension,
+    setFreeForm,
+    updateFreeFormEdge,
     setTexture,
     setBoardDirection,
     setBoardAngle,

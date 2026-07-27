@@ -7,7 +7,10 @@ persists the latest configuration in `localStorage`.
 
 ## Features
 
-- Rectangle, L-shaped, T-shaped, U-shaped, O-shaped, and circular plans
+- Rectangle, L-shaped, T-shaped, U-shaped, O-shaped, circular, and free-form
+  plans
+- Snap-to-grid free-form drawing with contour closing and draggable vertices
+- Live free-form edge lengths, internal angles, and self-intersection validation
 - Shape-specific dimensions in centimeters
 - Instant proportional SVG rendering
 - Vertex labels and dimension lines around every plan edge
@@ -43,7 +46,9 @@ calculate terrace geometry themselves. Each shape has a pure function that
 turns dimensions into an SVG path, points, bounds, area, vertices, edges, and
 dimension metadata.
 `TerracePreview` talks only to the geometry registry, so registering another
-shape does not require changing the preview component.
+standard dimension-driven shape does not require changing the preview component.
+Free-form interaction is an editor mode layered over the same registry output;
+its polygon math and validation remain pure functions in `geometry/freeForm.ts`.
 
 Validation and storage normalization live outside the UI. This prevents invalid
 or outdated `localStorage` data from reaching the renderer and keeps the
@@ -76,8 +81,9 @@ npm run build
 ```
 
 The test suites cover every shape generator, including paths, points, bounds,
-areas, vertex topology, edge dimensions, and registry dispatch. Configuration
-tests cover legacy migration, imported value normalization, and undo/redo.
+areas, vertex topology, edge dimensions, free-form polygon validation, and
+registry dispatch. Configuration tests cover legacy migration, imported value
+normalization, free-form editing, and undo/redo.
 
 ## Adding a shape
 
@@ -93,9 +99,9 @@ No change is needed in `TerracePreview.vue`.
 
 For a production configurator, the next useful steps would be:
 
-- Add snap-to-grid editing and draggable control points.
-- Add freeform outlines, multiple terrace areas, and imported site-plan
-  underlays.
+- Add optional angle constraints, edge insertion, and pointer-friendly vertex
+  deletion for free-form plans.
+- Add multiple terrace areas and imported site-plan underlays.
 - Model edge trims, joist layout, board cutting, and reusable offcuts.
 - Add pricing and a bill of materials backed by a versioned product catalog.
 - Support shareable URLs, cloud projects, authentication, and server-side

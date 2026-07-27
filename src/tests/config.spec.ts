@@ -85,6 +85,25 @@ describe('terrace configuration migration', () => {
     expect(parsed?.decking.startEdgeId).toBe('AB')
   })
 
+  it('rejects a self-intersecting imported free-form outline', () => {
+    const parsed = parseTerraceConfig({
+      shape: 'free-form',
+      dimensions: {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 300, y: 300 },
+          { x: 0, y: 300 },
+          { x: 300, y: 0 },
+        ],
+        closed: true,
+      },
+      texture: 'natural-oak',
+      boardDirection: 'horizontal',
+    })
+
+    expect(parsed).toBeNull()
+  })
+
   it('migrates a legacy centered T stem to two independent overhangs', () => {
     const parsed = parseTerraceConfig({
       shape: 't-shape',
@@ -242,5 +261,65 @@ describe('derived edge measurements', () => {
       openingY: 150,
     })
     expect(terrace.areaSquareMeters.value).toBe(26)
+  })
+})
+
+describe('free-form editing', () => {
+  it('draws, closes, measures, and resizes an arbitrary outline', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('free-form')
+    const vertices = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 },
+    ]
+
+    expect(terrace.setFreeForm(vertices, false)).toBe(true)
+    expect(terrace.areaSquareMeters.value).toBe(0)
+    expect(terrace.setFreeForm(vertices, true)).toBe(true)
+    expect(terrace.areaSquareMeters.value).toBe(12)
+
+    expect(terrace.updateFreeFormEdge('AB', 500)).toBe(true)
+    expect(terrace.config.value).toMatchObject({
+      shape: 'free-form',
+      dimensions: {
+        closed: true,
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 500, y: 0 },
+          { x: 400, y: 300 },
+          { x: 0, y: 300 },
+        ],
+      },
+    })
+  })
+
+  it('keeps the previous plan when a drag would cross another edge', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('free-form')
+    const rectangle = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 },
+    ]
+    terrace.setFreeForm(rectangle, true)
+
+    expect(
+      terrace.setFreeForm(
+        [
+          { x: 0, y: 0 },
+          { x: 400, y: 300 },
+          { x: 400, y: 0 },
+          { x: 0, y: 300 },
+        ],
+        true,
+      ),
+    ).toBe(false)
+    expect(terrace.config.value.dimensions).toEqual({
+      vertices: rectangle,
+      closed: true,
+    })
   })
 })

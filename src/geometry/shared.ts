@@ -78,16 +78,20 @@ const normalizeVector = (vector: Point): Point => {
   }
 }
 
-const outwardNormal = (start: Point, end: Point): Point => {
+const outwardNormal = (
+  start: Point,
+  end: Point,
+  winding: 1 | -1 = 1,
+): Point => {
   const direction = normalizeVector({
     x: end.x - start.x,
     y: end.y - start.y,
   })
 
-  // Polygon points are clockwise in the SVG coordinate system (+y is down).
+  // Positive shoelace area is clockwise in the SVG coordinate system (+y down).
   return {
-    x: direction.y,
-    y: -direction.x,
+    x: direction.y * winding,
+    y: -direction.x * winding,
   }
 }
 
@@ -136,11 +140,16 @@ export function createPolygonTopology(
   const labels = points.map((_, index) =>
     createVertexLabel(labelStartIndex + index),
   )
+  const signedDoubleArea = points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length]!
+    return sum + point.x * next.y - next.x * point.y
+  }, 0)
+  const winding: 1 | -1 = signedDoubleArea >= 0 ? 1 : -1
   const vertices = points.map((point, index): GeometryVertex => {
     const previous = points[(index - 1 + points.length) % points.length]!
     const next = points[(index + 1) % points.length]!
-    const incomingNormal = outwardNormal(previous, point)
-    const outgoingNormal = outwardNormal(point, next)
+    const incomingNormal = outwardNormal(previous, point, winding)
+    const outgoingNormal = outwardNormal(point, next, winding)
     const bisector = normalizeVector({
       x: incomingNormal.x + outgoingNormal.x,
       y: incomingNormal.y + outgoingNormal.y,
@@ -166,7 +175,7 @@ export function createPolygonTopology(
     const end = points[nextIndex]!
     const startVertexId = labels[index]!
     const endVertexId = labels[nextIndex]!
-    const normal = outwardNormal(start, end)
+    const normal = outwardNormal(start, end, winding)
     const length = Math.hypot(end.x - start.x, end.y - start.y)
     const guideStart = offsetPoint(start, normal, DIMENSION_GUIDE_OFFSET)
     const guideEnd = offsetPoint(end, normal, DIMENSION_GUIDE_OFFSET)

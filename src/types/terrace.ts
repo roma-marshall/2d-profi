@@ -4,6 +4,7 @@ export type TerraceShape =
   | 't-shape'
   | 'u-shape'
   | 'o-shape'
+  | 'free-form'
   | 'circle'
 
 export type WoodTextureId = 'natural-oak' | 'smoked-ash' | 'honey-pine'
@@ -56,6 +57,11 @@ export interface OShapeDimensions {
   openingY: number
 }
 
+export interface FreeFormDimensions {
+  vertices: Point[]
+  closed: boolean
+}
+
 export interface CircleDimensions {
   diameter: number
 }
@@ -66,6 +72,7 @@ export interface ShapeDimensionsMap {
   't-shape': TShapeDimensions
   'u-shape': UShapeDimensions
   'o-shape': OShapeDimensions
+  'free-form': FreeFormDimensions
   circle: CircleDimensions
 }
 

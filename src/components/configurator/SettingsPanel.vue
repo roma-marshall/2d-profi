@@ -10,6 +10,10 @@ import {
 } from '@/data/shapes'
 import { DECKING_LIMITS } from '@/data/decking'
 import { woodTextureById, woodTextures } from '@/data/textures'
+import {
+  FREE_FORM_MAX_EDGE,
+  FREE_FORM_MIN_EDGE,
+} from '@/geometry/freeForm'
 import type {
   BoardDirection,
   TerraceConfig,
@@ -26,12 +30,13 @@ const props = defineProps<{
   isSaved: boolean
   activeSection: ConfiguratorSection
   activeDimensionKey: string | null
-  edgeOptions: readonly { id: string; label: string }[]
+  edgeOptions: readonly { id: string; label: string; length: number }[]
 }>()
 
 const emit = defineEmits<{
   'select-shape': [shape: TerraceShape]
   'update-dimension': [payload: { key: string; value: number }]
+  'update-free-form-edge': [payload: { edgeId: string; value: number }]
   'set-texture': [texture: WoodTextureId]
   'set-direction': [direction: BoardDirection]
   'set-board-angle': [angle: number]
@@ -119,6 +124,7 @@ const shapeIconClass: Record<TerraceShape, string> = {
   't-shape': 'shape-icon--t',
   'u-shape': 'shape-icon--u',
   'o-shape': 'shape-icon--o',
+  'free-form': 'shape-icon--free',
   circle: 'shape-icon--circle',
 }
 
@@ -299,22 +305,54 @@ watch(
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <DimensionField
-              v-for="field in resolvedFields"
-              :id="`terrace-${config.shape}-${field.key}`"
-              :key="`${config.shape}-${field.key}`"
-              :label="field.label"
-              :edge-label="field.edgeLabel"
-              :hint="field.hint"
-              :model-value="field.value"
-              :min="field.min"
-              :max="field.max"
-              :step="field.step"
-              :active="activeDimensionKey === field.key"
-              @focus="activateDimension(field.key)"
-              @blur="emit('activate-dimension', null)"
-              @update:model-value="updateDimension(field.key, $event)"
-            />
+            <template v-if="config.shape === 'free-form'">
+              <DimensionField
+                v-for="edge in edgeOptions"
+                :id="`terrace-free-form-edge:${edge.id}`"
+                :key="`free-form-${edge.id}`"
+                :label="`Edge ${edge.id[0]}–${edge.id[1]}`"
+                :edge-label="`${edge.id[0]}–${edge.id[1]}`"
+                hint="Moves the end vertex along the current edge angle."
+                :model-value="edge.length"
+                :min="FREE_FORM_MIN_EDGE"
+                :max="FREE_FORM_MAX_EDGE"
+                :step="1"
+                :active="activeDimensionKey === `edge:${edge.id}`"
+                @focus="activateDimension(`edge:${edge.id}`)"
+                @blur="emit('activate-dimension', null)"
+                @update:model-value="
+                  emit('update-free-form-edge', {
+                    edgeId: edge.id,
+                    value: $event,
+                  })
+                "
+              />
+              <p
+                v-if="edgeOptions.length === 0"
+                class="rounded-lg border border-dashed border-stone-300 bg-white px-3 py-4 text-center text-xs leading-5 text-stone-500"
+              >
+                Add at least three points and close the outline to edit its
+                edge lengths.
+              </p>
+            </template>
+            <template v-else>
+              <DimensionField
+                v-for="field in resolvedFields"
+                :id="`terrace-${config.shape}-${field.key}`"
+                :key="`${config.shape}-${field.key}`"
+                :label="field.label"
+                :edge-label="field.edgeLabel"
+                :hint="field.hint"
+                :model-value="field.value"
+                :min="field.min"
+                :max="field.max"
+                :step="field.step"
+                :active="activeDimensionKey === field.key"
+                @focus="activateDimension(field.key)"
+                @blur="emit('activate-dimension', null)"
+                @update:model-value="updateDimension(field.key, $event)"
+              />
+            </template>
           </div>
 
           <button
@@ -702,6 +740,18 @@ watch(
 .shape-icon--o {
   border: 0.32rem solid currentColor;
   background: transparent;
+}
+
+.shape-icon--free {
+  clip-path: polygon(
+    5% 10%,
+    92% 0,
+    76% 42%,
+    98% 86%,
+    48% 100%,
+    0 72%,
+    22% 38%
+  );
 }
 
 .shape-icon--circle {

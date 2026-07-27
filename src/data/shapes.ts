@@ -48,6 +48,10 @@ export const defaultDimensions: ShapeDimensionsMap = {
     openingX: 175,
     openingY: 150,
   },
+  'free-form': {
+    vertices: [],
+    closed: false,
+  },
   circle: {
     diameter: 450,
   },
@@ -665,6 +669,14 @@ export const shapeOptions = [
     ],
   },
   {
+    id: 'free-form',
+    label: 'Free form',
+    shortLabel: 'Free form',
+    description:
+      'Draw an arbitrary polygon by placing and moving points on the grid.',
+    fields: [],
+  },
+  {
     id: 'circle',
     label: 'Circle',
     shortLabel: 'Circle',
@@ -689,7 +701,8 @@ export const shapeOptionById: Record<TerraceShape, ShapeOption> = {
   't-shape': shapeOptions[2],
   'u-shape': shapeOptions[3],
   'o-shape': shapeOptions[4],
-  circle: shapeOptions[5],
+  'free-form': shapeOptions[5],
+  circle: shapeOptions[6],
 }
 
 const terraceShapes = new Set<TerraceShape>(
@@ -891,6 +904,29 @@ const normalizeOShape = (
   }
 }
 
+const normalizeFreeForm = (
+  input: Record<string, unknown>,
+): ShapeDimensionsMap['free-form'] => {
+  const vertices = (
+    Array.isArray(input.vertices) ? input.vertices : []
+  )
+    .flatMap((value) => {
+      if (!isRecord(value)) {
+        return []
+      }
+
+      const x = safeNumber(value.x, Number.NaN)
+      const y = safeNumber(value.y, Number.NaN)
+      return Number.isFinite(x) && Number.isFinite(y) ? [{ x, y }] : []
+    })
+    .slice(0, 24)
+
+  return {
+    vertices,
+    closed: input.closed === true && vertices.length >= 3,
+  }
+}
+
 const normalizeCircle = (
   input: Record<string, unknown>,
 ): ShapeDimensionsMap['circle'] => ({
@@ -918,6 +954,8 @@ export function normalizeDimensions<TShape extends TerraceShape>(
       return normalizeUShape(dimensions) as ShapeDimensionsMap[TShape]
     case 'o-shape':
       return normalizeOShape(dimensions) as ShapeDimensionsMap[TShape]
+    case 'free-form':
+      return normalizeFreeForm(dimensions) as ShapeDimensionsMap[TShape]
     case 'circle':
       return normalizeCircle(dimensions) as ShapeDimensionsMap[TShape]
   }

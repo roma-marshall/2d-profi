@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { createCircleGeometry } from '@/geometry/circle'
+import {
+  calculateInteriorAngles,
+  calculatePolygonArea,
+  createFreeFormGeometry,
+  isSimplePolygon,
+  resizePolygonEdge,
+} from '@/geometry/freeForm'
 import { createLShapeGeometry } from '@/geometry/lShape'
 import { createOShapeGeometry } from '@/geometry/oShape'
 import { createRectangleGeometry } from '@/geometry/rectangle'
@@ -258,6 +265,106 @@ describe('createOShapeGeometry', () => {
   })
 })
 
+describe('createFreeFormGeometry', () => {
+  const concaveOutline = [
+    { x: 0, y: 0 },
+    { x: 400, y: 0 },
+    { x: 400, y: 300 },
+    { x: 250, y: 300 },
+    { x: 250, y: 150 },
+    { x: 0, y: 150 },
+  ]
+
+  it('builds a closed concave outline with labeled, measurable edges', () => {
+    const geometry = createFreeFormGeometry({
+      vertices: concaveOutline,
+      closed: true,
+    })
+
+    expect(geometry.path).toBe(
+      'M 0 0 L 400 0 L 400 300 L 250 300 L 250 150 L 0 150 Z',
+    )
+    expect(geometry.bounds).toEqual({
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+    })
+    expect(geometry.areaSquareCentimeters).toBe(82_500)
+    expect(geometry.vertices.map(({ label }) => label)).toEqual([
+      'A',
+      'B',
+      'C',
+      'D',
+      'E',
+      'F',
+    ])
+    expect(geometry.edges.map(({ id, length }) => ({ id, length }))).toEqual([
+      { id: 'AB', length: 400 },
+      { id: 'BC', length: 300 },
+      { id: 'CD', length: 150 },
+      { id: 'DE', length: 150 },
+      { id: 'EF', length: 250 },
+      { id: 'FA', length: 150 },
+    ])
+  })
+
+  it('keeps an unfinished outline open and reserves a stable drawing area', () => {
+    const geometry = createFreeFormGeometry({
+      vertices: concaveOutline.slice(0, 2),
+      closed: false,
+    })
+
+    expect(geometry.path).toBe('M 0 0 L 400 0')
+    expect(geometry.edges).toEqual([])
+    expect(geometry.areaSquareCentimeters).toBe(0)
+    expect(geometry.bounds).toEqual({
+      x: 0,
+      y: 0,
+      width: 600,
+      height: 450,
+    })
+  })
+
+  it('calculates reflex angles and rejects self-intersecting outlines', () => {
+    expect(calculatePolygonArea(concaveOutline)).toBe(82_500)
+    expect(calculateInteriorAngles(concaveOutline)).toEqual([
+      90,
+      90,
+      90,
+      90,
+      270,
+      90,
+    ])
+    expect(isSimplePolygon(concaveOutline)).toBe(true)
+    expect(
+      isSimplePolygon([
+        { x: 0, y: 0 },
+        { x: 300, y: 300 },
+        { x: 0, y: 300 },
+        { x: 300, y: 0 },
+      ]),
+    ).toBe(false)
+  })
+
+  it('resizes one edge by moving only its end point', () => {
+    const rectangle = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 },
+    ]
+
+    expect(resizePolygonEdge(rectangle, 0, 500)).toEqual([
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 },
+    ])
+    expect(rectangle[1]).toEqual({ x: 400, y: 0 })
+  })
+})
+
 describe('createCircleGeometry', () => {
   it('returns a two-arc path, cardinal points, circular bounds, and area', () => {
     const geometry = createCircleGeometry({ diameter: 500 })
@@ -343,6 +450,7 @@ describe('geometry registry', () => {
       't-shape',
       'u-shape',
       'o-shape',
+      'free-form',
       'circle',
     ])
   })
@@ -377,6 +485,15 @@ describe('geometry registry', () => {
       openingX: 180,
       openingY: 140,
     }
+    const freeFormDimensions = {
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 420, y: 0 },
+        { x: 420, y: 280 },
+        { x: 0, y: 280 },
+      ],
+      closed: true,
+    }
     const circleDimensions = { diameter: 475 }
 
     expect(createTerraceGeometry('rectangle', rectangleDimensions)).toEqual(
@@ -393,6 +510,9 @@ describe('geometry registry', () => {
     )
     expect(createTerraceGeometry('o-shape', oShapeDimensions)).toEqual(
       createOShapeGeometry(oShapeDimensions),
+    )
+    expect(createTerraceGeometry('free-form', freeFormDimensions)).toEqual(
+      createFreeFormGeometry(freeFormDimensions),
     )
     expect(createTerraceGeometry('circle', circleDimensions)).toEqual(
       createCircleGeometry(circleDimensions),
@@ -686,6 +806,15 @@ describe('per-edge SVG dimension metadata', () => {
       openingDepth: 250,
       openingX: 150,
       openingY: 175,
+    }),
+    createFreeFormGeometry({
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 480, y: 0 },
+        { x: 420, y: 300 },
+        { x: 0, y: 260 },
+      ],
+      closed: true,
     }),
     createCircleGeometry({ diameter: 500 }),
   ])('keeps every edge linked to labeled vertices', (geometry: ShapeGeometry) => {

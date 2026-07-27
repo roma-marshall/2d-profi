@@ -3,9 +3,17 @@ import { computed, ref, useId, watch } from 'vue'
 
 import { shapeOptionById } from '@/data/shapes'
 import { woodTextureById } from '@/data/textures'
+import {
+  FREE_FORM_GRID_SIZE,
+  FREE_FORM_MAX_EDGE,
+  FREE_FORM_MAX_VERTICES,
+  FREE_FORM_MIN_EDGE,
+  calculateInteriorAngles,
+} from '@/geometry/freeForm'
 import { createTerraceGeometry } from '@/geometry/registry'
 import type {
   DimensionGuide,
+  FreeFormDimensions,
   GeometryEdge,
   Point,
   TerraceConfig,
@@ -21,6 +29,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'activate-dimension': [key: string | null]
+  'update-free-form': [
+    payload: { vertices: readonly Point[]; closed: boolean },
+  ]
   undo: []
   redo: []
 }>()
@@ -48,12 +59,42 @@ const pan = ref<Point>({ x: 0, y: 0 })
 const isPanning = ref(false)
 const panPointerId = ref<number | null>(null)
 const lastPointerPosition = ref<Point>({ x: 0, y: 0 })
+const pointerStartPosition = ref<Point>({ x: 0, y: 0 })
+const didPan = ref(false)
+const svgRef = ref<SVGSVGElement | null>(null)
+const freeFormDraftVertices = ref<Point[] | null>(null)
+const draggedVertexIndex = ref<number | null>(null)
+const vertexPointerId = ref<number | null>(null)
+const vertexPointerStart = ref<Point>({ x: 0, y: 0 })
+const vertexMoved = ref(false)
+
+const configuredFreeForm = computed<FreeFormDimensions | null>(() =>
+  props.config.shape === 'free-form' ? props.config.dimensions : null,
+)
+const isFreeForm = computed(() => configuredFreeForm.value !== null)
+const isFreeFormClosed = computed(
+  () => configuredFreeForm.value?.closed === true,
+)
+const renderedDimensions = computed<TerraceDimensions>(() => {
+  const dimensions = configuredFreeForm.value
+  if (dimensions === null || freeFormDraftVertices.value === null) {
+    return props.config.dimensions
+  }
+
+  return {
+    vertices: freeFormDraftVertices.value,
+    closed: dimensions.closed,
+  }
+})
 
 const geometry = computed(() =>
   createTerraceGeometry(
     props.config.shape,
-    props.config.dimensions as TerraceDimensions,
+    renderedDimensions.value,
   ),
+)
+const freeFormVertices = computed<readonly Point[]>(() =>
+  isFreeForm.value ? geometry.value.points : [],
 )
 
 const texture = computed(() => woodTextureById[props.config.texture])
@@ -131,6 +172,41 @@ const vertexFontSize = computed(() =>
   Math.max(10, maximumExtent.value * 0.025),
 )
 
+const freeFormHandleRadius = computed(() =>
+  Math.max(8, maximumExtent.value * 0.014),
+)
+
+const freeFormAngleLabels = computed(() => {
+  const points = freeFormVertices.value
+  if (!isFreeFormClosed.value || points.length < 3) {
+    return []
+  }
+
+  const center = points.reduce(
+    (sum, point) => ({
+      x: sum.x + point.x / points.length,
+      y: sum.y + point.y / points.length,
+    }),
+    { x: 0, y: 0 },
+  )
+  const distance = Math.max(32, labelFontSize.value * 2.4)
+
+  return calculateInteriorAngles(points).map((value, index) => {
+    const point = points[index]!
+    const delta = { x: center.x - point.x, y: center.y - point.y }
+    const length = Math.hypot(delta.x, delta.y) || 1
+
+    return {
+      id: geometry.value.vertices[index]?.id ?? String(index),
+      value: Math.round(value),
+      position: {
+        x: point.x + (delta.x / length) * distance,
+        y: point.y + (delta.y / length) * distance,
+      },
+    }
+  })
+})
+
 const patternWidth = computed(() =>
   Math.max(240, maximumExtent.value * 0.9),
 )
@@ -161,8 +237,17 @@ const normalizeEdgeLabel = (label: string): string =>
 const reverseEdgeId = (edgeId: string): string =>
   edgeId.length === 2 ? `${edgeId[1]}${edgeId[0]}` : edgeId
 
-const fieldKeyByEdgeId = computed<Record<string, string>>(() =>
-  Object.fromEntries(
+const fieldKeyByEdgeId = computed<Record<string, string>>(() => {
+  if (isFreeForm.value) {
+    return Object.fromEntries(
+      geometry.value.edges.map((edge) => [
+        edge.id,
+        `edge:${edge.id}`,
+      ]),
+    )
+  }
+
+  return Object.fromEntries(
     geometry.value.edges.flatMap((edge) => {
       const matchingField = shapeOptionById[
         props.config.shape
@@ -182,8 +267,8 @@ const fieldKeyByEdgeId = computed<Record<string, string>>(() =>
         ? []
         : [[edge.id, matchingField.key] as const]
     }),
-  ),
-)
+  )
+})
 
 const hasArcEdges = computed(() =>
   geometry.value.edges.some((edge) => edge.kind === 'arc'),
@@ -292,6 +377,35 @@ const handleWheel = (event: WheelEvent): void => {
   setZoom(zoom.value + (event.deltaY < 0 ? 0.12 : -0.12))
 }
 
+const pointFromPointer = (event: MouseEvent | PointerEvent): Point | null => {
+  const svg = svgRef.value
+  const screenMatrix = svg?.getScreenCTM()
+  if (svg === null || svg === undefined || screenMatrix == null) {
+    return null
+  }
+
+  const svgPoint = svg.createSVGPoint()
+  svgPoint.x = event.clientX
+  svgPoint.y = event.clientY
+  const transformed = svgPoint.matrixTransform(screenMatrix.inverse())
+  let point = { x: transformed.x, y: transformed.y }
+
+  if (isPlanRotated.value) {
+    const { x, y, width, height } = geometry.value.bounds
+    const center = { x: x + width / 2, y: y + height / 2 }
+    const delta = { x: point.x - center.x, y: point.y - center.y }
+    point = {
+      x: center.x + delta.y,
+      y: center.y - delta.x,
+    }
+  }
+
+  return {
+    x: Math.round(point.x / FREE_FORM_GRID_SIZE) * FREE_FORM_GRID_SIZE,
+    y: Math.round(point.y / FREE_FORM_GRID_SIZE) * FREE_FORM_GRID_SIZE,
+  }
+}
+
 const handlePointerDown = (event: PointerEvent): void => {
   const target = event.target
   if (
@@ -307,12 +421,31 @@ const handlePointerDown = (event: PointerEvent): void => {
   }
 
   isPanning.value = true
+  didPan.value = false
   panPointerId.value = event.pointerId
   lastPointerPosition.value = { x: event.clientX, y: event.clientY }
+  pointerStartPosition.value = { x: event.clientX, y: event.clientY }
   svg.setPointerCapture(event.pointerId)
 }
 
 const handlePointerMove = (event: PointerEvent): void => {
+  if (
+    vertexPointerId.value === event.pointerId &&
+    draggedVertexIndex.value !== null &&
+    freeFormDraftVertices.value !== null
+  ) {
+    const point = pointFromPointer(event)
+    if (point !== null) {
+      freeFormDraftVertices.value[draggedVertexIndex.value] = point
+    }
+    vertexMoved.value =
+      Math.hypot(
+        event.clientX - vertexPointerStart.value.x,
+        event.clientY - vertexPointerStart.value.y,
+      ) > 3
+    return
+  }
+
   if (!isPanning.value || panPointerId.value !== event.pointerId) {
     return
   }
@@ -327,6 +460,11 @@ const handlePointerMove = (event: PointerEvent): void => {
   const viewportHeight = visibleViewport.value.height / zoom.value
   const deltaX = event.clientX - lastPointerPosition.value.x
   const deltaY = event.clientY - lastPointerPosition.value.y
+  didPan.value =
+    Math.hypot(
+      event.clientX - pointerStartPosition.value.x,
+      event.clientY - pointerStartPosition.value.y,
+    ) > 3
 
   pan.value = {
     x: pan.value.x - (deltaX * viewportWidth) / Math.max(rect.width, 1),
@@ -336,6 +474,28 @@ const handlePointerMove = (event: PointerEvent): void => {
 }
 
 const handlePointerUp = (event: PointerEvent): void => {
+  if (
+    vertexPointerId.value === event.pointerId &&
+    draggedVertexIndex.value !== null
+  ) {
+    const svg = svgRef.value
+    if (svg?.hasPointerCapture(event.pointerId)) {
+      svg.releasePointerCapture(event.pointerId)
+    }
+
+    if (freeFormDraftVertices.value !== null) {
+      emit('update-free-form', {
+        vertices: freeFormDraftVertices.value,
+        closed: isFreeFormClosed.value,
+      })
+    }
+
+    freeFormDraftVertices.value = null
+    draggedVertexIndex.value = null
+    vertexPointerId.value = null
+    return
+  }
+
   if (panPointerId.value !== event.pointerId) {
     return
   }
@@ -347,6 +507,108 @@ const handlePointerUp = (event: PointerEvent): void => {
 
   isPanning.value = false
   panPointerId.value = null
+}
+
+const handleCanvasClick = (event: MouseEvent): void => {
+  if (didPan.value) {
+    didPan.value = false
+    return
+  }
+
+  if (!isFreeForm.value) {
+    if (event.target === event.currentTarget) {
+      emit('activate-dimension', null)
+    }
+    return
+  }
+
+  const target = event.target
+  if (
+    isFreeFormClosed.value ||
+    (target instanceof Element &&
+      target.closest('[data-free-form-control]') !== null) ||
+    freeFormVertices.value.length >= FREE_FORM_MAX_VERTICES
+  ) {
+    return
+  }
+
+  const point = pointFromPointer(event)
+  if (point === null) {
+    return
+  }
+
+  const lastPoint = freeFormVertices.value.at(-1)
+  if (
+    lastPoint !== undefined &&
+    (Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) <
+      FREE_FORM_MIN_EDGE ||
+      Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y) >
+        FREE_FORM_MAX_EDGE)
+  ) {
+    return
+  }
+
+  emit('update-free-form', {
+    vertices: [...freeFormVertices.value, point],
+    closed: false,
+  })
+}
+
+const handleVertexPointerDown = (
+  event: PointerEvent,
+  index: number,
+): void => {
+  if (event.button !== 0) {
+    return
+  }
+
+  event.preventDefault()
+  vertexMoved.value = false
+  draggedVertexIndex.value = index
+  vertexPointerId.value = event.pointerId
+  vertexPointerStart.value = { x: event.clientX, y: event.clientY }
+  freeFormDraftVertices.value = freeFormVertices.value.map((point) => ({
+    ...point,
+  }))
+  svgRef.value?.setPointerCapture(event.pointerId)
+}
+
+const closeFreeForm = (): void => {
+  emit('update-free-form', {
+    vertices: freeFormVertices.value,
+    closed: true,
+  })
+}
+
+const handleVertexClick = (index: number): void => {
+  if (vertexMoved.value) {
+    vertexMoved.value = false
+    return
+  }
+
+  if (
+    index === 0 &&
+    !isFreeFormClosed.value &&
+    freeFormVertices.value.length >= 3
+  ) {
+    closeFreeForm()
+  }
+}
+
+const clearFreeForm = (): void => {
+  freeFormDraftVertices.value = null
+  emit('activate-dimension', null)
+  emit('update-free-form', { vertices: [], closed: false })
+}
+
+const removeFreeFormVertex = (index: number): void => {
+  const vertices = freeFormVertices.value.filter(
+    (_, vertexIndex) => vertexIndex !== index,
+  )
+  emit('update-free-form', {
+    vertices,
+    closed: isFreeFormClosed.value && vertices.length >= 3,
+  })
 }
 
 const activateEdge = (edgeId: string): void => {
@@ -361,7 +623,8 @@ const edgeAccessibleLabel = (edge: GeometryEdge): string => {
   const fieldLabel =
     fieldKey === undefined
       ? `edge ${edge.startVertexId} to ${edge.endVertexId}`
-      : dimensionLabelByKey.value[fieldKey]
+      : (dimensionLabelByKey.value[fieldKey] ??
+        `edge ${edge.startVertexId} to ${edge.endVertexId}`)
 
   return `Edit ${fieldLabel}, ${formatMeasurement(edge.dimension.value)}`
 }
@@ -375,6 +638,9 @@ watch(
   () => props.config.shape,
   () => {
     resetView()
+    freeFormDraftVertices.value = null
+    draggedVertexIndex.value = null
+    vertexPointerId.value = null
   },
 )
 </script>
@@ -503,14 +769,77 @@ watch(
     </div>
 
     <div
+      v-if="!isFreeForm"
       class="pointer-events-none absolute top-14 right-3 z-10 rounded-md border border-stone-200 bg-white/88 px-2.5 py-1.5 text-[0.625rem] font-bold tracking-[0.1em] text-stone-500 uppercase backdrop-blur"
     >
       {{ Math.round(zoom * 100) }}%
     </div>
 
+    <div
+      v-else
+      data-free-form-control
+      class="absolute top-14 right-3 z-20 rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
+      :class="isFreeFormClosed ? 'p-2' : 'w-56 p-3'"
+    >
+      <template v-if="isFreeFormClosed">
+        <div class="flex items-center gap-2">
+          <p class="text-[0.625rem] font-bold text-stone-500">
+            {{ freeFormVertices.length }} points · Drag to edit
+          </p>
+          <button
+            type="button"
+            class="free-form-action shrink-0"
+            @click="clearFreeForm"
+          >
+            Clear
+          </button>
+        </div>
+      </template>
+      <template v-else>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-[0.625rem] font-extrabold tracking-[0.1em] text-[#648349] uppercase">
+              Free-form outline
+            </p>
+            <p class="mt-1 text-[0.6875rem] leading-4 text-stone-500">
+              Click the grid to add points. Click A to close.
+            </p>
+          </div>
+          <span class="shrink-0 text-[0.625rem] font-bold text-stone-400">
+            {{ freeFormVertices.length }}/{{ FREE_FORM_MAX_VERTICES }}
+          </span>
+        </div>
+        <div class="mt-2.5 flex gap-2">
+          <button
+            type="button"
+            class="free-form-action free-form-action--primary"
+            :disabled="freeFormVertices.length < 3"
+            @click="closeFreeForm"
+          >
+            Close outline
+          </button>
+          <button
+            v-if="freeFormVertices.length > 0"
+            type="button"
+            class="free-form-action"
+            @click="clearFreeForm"
+          >
+            Clear
+          </button>
+        </div>
+      </template>
+    </div>
+
     <svg
+      ref="svgRef"
       class="absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0"
-      :class="isPanning ? 'cursor-grabbing' : 'cursor-grab'"
+      :class="
+        isPanning
+          ? 'cursor-grabbing'
+          : isFreeForm && !isFreeFormClosed
+            ? 'cursor-crosshair'
+            : 'cursor-grab'
+      "
       :viewBox="viewBox"
       preserveAspectRatio="xMidYMid meet"
       role="group"
@@ -520,7 +849,7 @@ watch(
       @pointermove="handlePointerMove"
       @pointerup="handlePointerUp"
       @pointercancel="handlePointerUp"
-      @click.self="emit('activate-dimension', null)"
+      @click="handleCanvasClick"
     >
       <title id="terrace-preview-title">
         {{ shapeLabel }} terrace plan
@@ -599,13 +928,22 @@ watch(
       <g :transform="planTransform">
       <path
         :d="geometry.path"
-        :fill="showDecking ? `url(#${patternId})` : '#d7d8d2'"
+        :fill="
+          isFreeForm && !isFreeFormClosed
+            ? 'none'
+            : showDecking
+              ? `url(#${patternId})`
+              : '#d7d8d2'
+        "
         fill-rule="evenodd"
         stroke="#3e443b"
         stroke-width="2"
         stroke-linejoin="round"
         vector-effect="non-scaling-stroke"
         class="terrace-shape"
+        :class="{
+          'terrace-shape--draft': isFreeForm && !isFreeFormClosed,
+        }"
       />
 
       <template v-if="showDimensions && !hasArcEdges">
@@ -782,6 +1120,80 @@ watch(
           </text>
         </g>
       </g>
+
+      <g
+        v-if="showDimensions && isFreeFormClosed"
+        class="free-form-angle-labels"
+      >
+        <g
+          v-for="angle in freeFormAngleLabels"
+          :key="`angle-${angle.id}`"
+          :transform="`translate(${angle.position.x} ${angle.position.y})`"
+        >
+          <circle
+            :r="labelFontSize * 1.5"
+            class="free-form-angle-sector"
+            vector-effect="non-scaling-stroke"
+          />
+          <rect
+            :x="-labelFontSize * 1.55"
+            :y="-labelFontSize * 0.72"
+            :width="labelFontSize * 3.1"
+            :height="labelFontSize * 1.44"
+            :rx="labelFontSize * 0.72"
+            class="free-form-angle-box"
+            vector-effect="non-scaling-stroke"
+          />
+          <text
+            x="0"
+            y="0"
+            :font-size="labelFontSize"
+            font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+            font-weight="700"
+            text-anchor="middle"
+            dominant-baseline="central"
+            class="free-form-angle-text"
+          >
+            {{ angle.value }}°
+          </text>
+        </g>
+      </g>
+
+      <g v-if="isFreeForm" class="free-form-handles">
+        <g
+          v-for="(point, index) in freeFormVertices"
+          :key="`free-form-handle-${index}`"
+          data-free-form-control
+          :transform="`translate(${point.x} ${point.y})`"
+          tabindex="0"
+          role="button"
+          :aria-label="`Point ${geometry.vertices[index]?.label ?? index + 1}. Drag to move; press Delete to remove.`"
+          @pointerdown.stop="handleVertexPointerDown($event, index)"
+          @click.stop="handleVertexClick(index)"
+          @keydown.enter.prevent.stop="handleVertexClick(index)"
+          @keydown.space.prevent.stop="handleVertexClick(index)"
+          @keydown.delete.prevent.stop="removeFreeFormVertex(index)"
+          @keydown.backspace.prevent.stop="removeFreeFormVertex(index)"
+        >
+          <circle
+            :r="freeFormHandleRadius + (index === 0 && !isFreeFormClosed ? 4 : 2)"
+            class="free-form-handle-hit"
+          />
+          <circle
+            :r="freeFormHandleRadius"
+            class="free-form-handle"
+            :class="{
+              'free-form-handle--start':
+                index === 0 && !isFreeFormClosed,
+            }"
+            vector-effect="non-scaling-stroke"
+          />
+          <circle
+            :r="Math.max(2.5, freeFormHandleRadius * 0.34)"
+            class="free-form-handle-dot"
+          />
+        </g>
+      </g>
       </g>
     </svg>
 
@@ -843,6 +1255,99 @@ watch(
 
 .terrace-shape {
   filter: drop-shadow(0 8px 8px rgb(48 43 36 / 0.12));
+}
+
+.terrace-shape--draft {
+  stroke: #648349;
+  stroke-dasharray: 7 5;
+  filter: none;
+}
+
+.free-form-action {
+  flex: 1;
+  border: 1px solid #d6d3d1;
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  color: #57534e;
+  font-size: 0.625rem;
+  font-weight: 750;
+  line-height: 1;
+  outline: none;
+}
+
+.free-form-action:hover:not(:disabled) {
+  background: #f5f5f4;
+}
+
+.free-form-action:focus-visible {
+  box-shadow: 0 0 0 2px #dce8d1;
+}
+
+.free-form-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.free-form-action--primary {
+  border-color: #648349;
+  background: #648349;
+  color: #fff;
+}
+
+.free-form-action--primary:hover:not(:disabled) {
+  background: #56743e;
+}
+
+.free-form-handles > g {
+  cursor: grab;
+  outline: none;
+}
+
+.free-form-handles > g:active {
+  cursor: grabbing;
+}
+
+.free-form-handle-hit {
+  fill: transparent;
+}
+
+.free-form-handle {
+  fill: #fff;
+  stroke: #4f6f39;
+  stroke-width: 2;
+  transition: fill 120ms ease;
+}
+
+.free-form-handles > g:hover .free-form-handle,
+.free-form-handles > g:focus-visible .free-form-handle,
+.free-form-handle--start {
+  fill: #e8f2df;
+  stroke-width: 3;
+}
+
+.free-form-handle-dot {
+  fill: #648349;
+  pointer-events: none;
+}
+
+.free-form-angle-labels {
+  pointer-events: none;
+}
+
+.free-form-angle-sector {
+  fill: #80bd5f;
+  fill-opacity: 0.55;
+  stroke: #5f9f3e;
+  stroke-width: 1;
+}
+
+.free-form-angle-box {
+  fill: #dededb;
+  fill-opacity: 0.94;
+}
+
+.free-form-angle-text {
+  fill: #272822;
 }
 
 .canvas-tool {

@@ -7,7 +7,7 @@ import { useTerraceConfig } from '@/composables/useTerraceConfig'
 import { shapeOptionById } from '@/data/shapes'
 import { woodTextureById } from '@/data/textures'
 import { createTerraceGeometry } from '@/geometry/registry'
-import type { TerraceDimensions } from '@/types/terrace'
+import type { Point, TerraceDimensions } from '@/types/terrace'
 
 type ConfiguratorSection = 'layout' | 'decking' | 'summary'
 
@@ -19,6 +19,8 @@ const {
   canRedo,
   selectShape,
   updateDimension,
+  setFreeForm,
+  updateFreeFormEdge,
   setTexture,
   setBoardDirection,
   setBoardAngle,
@@ -55,10 +57,20 @@ const geometry = computed(() =>
   ),
 )
 const footprint = computed(
-  () =>
-    `${Math.round(geometry.value.bounds.width)} × ${Math.round(
+  () => {
+    if (
+      config.value.shape === 'free-form' &&
+      !config.value.dimensions.closed
+    ) {
+      return config.value.dimensions.vertices.length > 0
+        ? 'Draft outline'
+        : 'Not drawn'
+    }
+
+    return `${Math.round(geometry.value.bounds.width)} × ${Math.round(
       geometry.value.bounds.height,
-    )} cm`,
+    )} cm`
+  },
 )
 
 const boardLayoutLabel = computed(() =>
@@ -73,6 +85,7 @@ const edgeOptions = computed(() =>
     label: `${edge.startVertexId}–${edge.endVertexId} · ${
       Math.round(edge.length * 10) / 10
     } cm`,
+    length: Math.round(edge.length * 10) / 10,
   })),
 )
 
@@ -87,6 +100,14 @@ const estimatedThreeMeterBoards = computed(() =>
 )
 
 const dimensionSummary = computed(() => {
+  if (config.value.shape === 'free-form') {
+    return geometry.value.edges.map((edge) => ({
+      key: `edge:${edge.id}`,
+      label: `Edge ${edge.startVertexId}–${edge.endVertexId}`,
+      value: Math.round(edge.length * 10) / 10,
+    }))
+  }
+
   const dimensions = config.value
     .dimensions as TerraceDimensions as unknown as Record<string, number>
 
@@ -190,6 +211,36 @@ const showNotification = (
   notificationTimer = setTimeout(() => {
     notification.value = null
   }, 3200)
+}
+
+const handleFreeFormUpdate = ({
+  vertices,
+  closed,
+}: {
+  vertices: readonly Point[]
+  closed: boolean
+}): void => {
+  if (!setFreeForm(vertices, closed)) {
+    showNotification(
+      'The outline cannot intersect itself or contain edges shorter than 20 cm.',
+      'error',
+    )
+  }
+}
+
+const handleFreeFormEdgeUpdate = ({
+  edgeId,
+  value,
+}: {
+  edgeId: string
+  value: number
+}): void => {
+  if (!updateFreeFormEdge(edgeId, value)) {
+    showNotification(
+      'This edge length would create an invalid outline.',
+      'error',
+    )
+  }
 }
 
 const exportConfig = (): void => {
@@ -445,6 +496,7 @@ onBeforeUnmount(() => {
           :can-redo="canRedo"
           class="min-h-0 flex-1"
           @activate-dimension="handleDimensionActivation"
+          @update-free-form="handleFreeFormUpdate"
           @undo="undo"
           @redo="redo"
         />
@@ -496,6 +548,7 @@ onBeforeUnmount(() => {
         :edge-options="edgeOptions"
         @select-shape="handleShapeSelection"
         @update-dimension="handleDimensionUpdate"
+        @update-free-form-edge="handleFreeFormEdgeUpdate"
         @set-texture="setTexture"
         @set-direction="setBoardDirection"
         @set-board-angle="setBoardAngle"

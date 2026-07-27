@@ -5,6 +5,7 @@ import type {
 } from '@/types/terrace'
 
 import { createCircleGeometry } from './circle'
+import { createFreeFormGeometry } from './freeForm'
 import { createLShapeGeometry } from './lShape'
 import { createOShapeGeometry } from './oShape'
 import { createRectangleGeometry } from './rectangle'
@@ -23,6 +24,7 @@ export const geometryGenerators: {
   't-shape': createTShapeGeometry,
   'u-shape': createUShapeGeometry,
   'o-shape': createOShapeGeometry,
+  'free-form': createFreeFormGeometry,
   circle: createCircleGeometry,
 }
 
