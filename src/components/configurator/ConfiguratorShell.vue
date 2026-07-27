@@ -93,7 +93,7 @@ const dimensionSummary = computed(() => {
   return shapeOptionById[config.value.shape].fields.map((field) => ({
     key: field.key,
     label: field.label,
-    value: dimensions[field.key] ?? 0,
+    value: field.getValue?.(dimensions) ?? dimensions[field.key] ?? 0,
   }))
 })
 

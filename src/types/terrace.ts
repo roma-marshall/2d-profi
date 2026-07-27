@@ -134,6 +134,13 @@ export interface DimensionFieldDefinition {
   min: number | ((dimensions: Record<string, number>) => number)
   max: number | ((dimensions: Record<string, number>) => number)
   step?: number
+  /** Reads a derived measurement that is not stored directly in the config. */
+  getValue?: (dimensions: Record<string, number>) => number
+  /** Converts an edited derived measurement back to stored dimensions. */
+  applyValue?: (
+    value: number,
+    dimensions: Record<string, number>,
+  ) => Record<string, number>
 }
 
 export interface ShapeOption {

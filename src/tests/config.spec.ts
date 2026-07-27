@@ -6,6 +6,8 @@ import {
   useTerraceConfig,
 } from '@/composables/useTerraceConfig'
 import { DEFAULT_DECKING_LAYOUT } from '@/data/decking'
+import { createTerraceGeometry } from '@/geometry/registry'
+import type { TerraceDimensions } from '@/types/terrace'
 
 describe('terrace configuration migration', () => {
   it('adds default decking data to a legacy horizontal configuration', () => {
@@ -134,5 +136,53 @@ describe('configuration history', () => {
 
     terrace.undo()
     expect(terrace.config.value.shape).toBe('rectangle')
+  })
+})
+
+describe('derived edge measurements', () => {
+  it('edits both recessed L-shape edges', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('l-shape')
+
+    terrace.updateDimension('recessWidth', 300)
+    terrace.updateDimension('recessDepth', 150)
+
+    expect(terrace.config.value.dimensions).toEqual({
+      width: 600,
+      depth: 500,
+      legWidth: 300,
+      legDepth: 350,
+    })
+
+    const geometry = createTerraceGeometry(
+      terrace.config.value.shape,
+      terrace.config.value.dimensions as TerraceDimensions,
+    )
+    expect(geometry.edges.find((edge) => edge.id === 'CD')?.length).toBe(300)
+    expect(geometry.edges.find((edge) => edge.id === 'DE')?.length).toBe(150)
+  })
+
+  it('edits either overhang of the centered T-shape', () => {
+    const terrace = useTerraceConfig()
+    terrace.selectShape('t-shape')
+
+    terrace.updateDimension('rightOverhang', 125)
+    expect(terrace.config.value.dimensions).toMatchObject({
+      width: 600,
+      stemWidth: 350,
+    })
+
+    terrace.updateDimension('leftOverhang', 150)
+    expect(terrace.config.value.dimensions).toMatchObject({
+      width: 600,
+      stemWidth: 300,
+    })
+
+    const geometry = createTerraceGeometry(
+      terrace.config.value.shape,
+      terrace.config.value.dimensions as TerraceDimensions,
+    )
+    expect(geometry.edges.find((edge) => edge.id === 'CD')?.length).toBe(150)
+    expect(geometry.edges.find((edge) => edge.id === 'GH')?.length).toBe(150)
   })
 })

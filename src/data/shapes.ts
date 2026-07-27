@@ -107,20 +107,102 @@ export const shapeOptions = [
           ),
       },
       {
-        ...commonDepthField,
-        edgeLabel: 'F–A',
-        min: (dimensions: Record<string, number>) =>
-          contextualMinimum(
+        key: 'legDepth',
+        label: 'Top leg depth',
+        edgeLabel: 'B–C',
+        hint: 'Depth of the horizontal leg.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          contextualMaximum(
             readContextValue(
               dimensions,
-              'legDepth',
-              defaultDimensions['l-shape'].legDepth,
-            ) + MIN_DIMENSION,
+              'depth',
+              defaultDimensions['l-shape'].depth,
+            ) - MIN_DIMENSION,
           ),
+        step: 10,
+      },
+      {
+        key: 'recessWidth',
+        label: 'Recess width',
+        edgeLabel: 'D–C',
+        hint: 'Horizontal span of the recessed corner.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          contextualMaximum(
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['l-shape'].width,
+            ) - MIN_DIMENSION,
+          ),
+        step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['l-shape'].width,
+          ) -
+          readContextValue(
+            dimensions,
+            'legWidth',
+            defaultDimensions['l-shape'].legWidth,
+          ),
+        applyValue: (
+          value: number,
+          dimensions: Record<string, number>,
+        ) => ({
+          ...dimensions,
+          legWidth:
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['l-shape'].width,
+            ) - value,
+        }),
+      },
+      {
+        key: 'recessDepth',
+        label: 'Recess depth',
+        edgeLabel: 'D–E',
+        hint: 'Vertical span of the recessed corner.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          contextualMaximum(
+            readContextValue(
+              dimensions,
+              'depth',
+              defaultDimensions['l-shape'].depth,
+            ) - MIN_DIMENSION,
+          ),
+        step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          readContextValue(
+            dimensions,
+            'depth',
+            defaultDimensions['l-shape'].depth,
+          ) -
+          readContextValue(
+            dimensions,
+            'legDepth',
+            defaultDimensions['l-shape'].legDepth,
+          ),
+        applyValue: (
+          value: number,
+          dimensions: Record<string, number>,
+        ) => ({
+          ...dimensions,
+          legDepth:
+            readContextValue(
+              dimensions,
+              'depth',
+              defaultDimensions['l-shape'].depth,
+            ) - value,
+        }),
       },
       {
         key: 'legWidth',
-        label: 'Leg width',
+        label: 'Left leg width',
         edgeLabel: 'E–F',
         hint: 'Width of the vertical leg.',
         min: MIN_DIMENSION,
@@ -135,20 +217,16 @@ export const shapeOptions = [
         step: 10,
       },
       {
-        key: 'legDepth',
-        label: 'Leg depth',
-        edgeLabel: 'B–C',
-        hint: 'Depth of the horizontal leg.',
-        min: MIN_DIMENSION,
-        max: (dimensions: Record<string, number>) =>
-          contextualMaximum(
+        ...commonDepthField,
+        edgeLabel: 'F–A',
+        min: (dimensions: Record<string, number>) =>
+          contextualMinimum(
             readContextValue(
               dimensions,
-              'depth',
-              defaultDimensions['l-shape'].depth,
-            ) - MIN_DIMENSION,
+              'legDepth',
+              defaultDimensions['l-shape'].legDepth,
+            ) + MIN_DIMENSION,
           ),
-        step: 10,
       },
     ],
   },
@@ -188,20 +266,45 @@ export const shapeOptions = [
         step: 10,
       },
       {
-        key: 'stemWidth',
-        label: 'Stem width',
-        edgeLabel: 'E–F',
-        hint: 'Width of the centered lower section.',
-        min: MIN_DIMENSION,
+        key: 'rightOverhang',
+        label: 'Right overhang',
+        edgeLabel: 'D–C',
+        hint: 'Distance from the right cap edge to the centered stem.',
+        min: MIN_DIMENSION / 2,
         max: (dimensions: Record<string, number>) =>
-          contextualMaximum(
+          (
             readContextValue(
               dimensions,
               'width',
               defaultDimensions['t-shape'].width,
-            ) - MIN_DIMENSION,
-          ),
+            ) - MIN_DIMENSION
+          ) / 2,
         step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          (readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['t-shape'].width,
+          ) -
+            readContextValue(
+              dimensions,
+              'stemWidth',
+              defaultDimensions['t-shape'].stemWidth,
+            )) /
+          2,
+        applyValue: (
+          value: number,
+          dimensions: Record<string, number>,
+        ) => ({
+          ...dimensions,
+          stemWidth:
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['t-shape'].width,
+            ) -
+            value * 2,
+        }),
       },
       {
         key: 'stemDepth',
@@ -219,6 +322,63 @@ export const shapeOptions = [
               ),
           ),
         step: 10,
+      },
+      {
+        key: 'stemWidth',
+        label: 'Stem width',
+        edgeLabel: 'E–F',
+        hint: 'Width of the centered lower section.',
+        min: MIN_DIMENSION,
+        max: (dimensions: Record<string, number>) =>
+          contextualMaximum(
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['t-shape'].width,
+            ) - MIN_DIMENSION,
+          ),
+        step: 10,
+      },
+      {
+        key: 'leftOverhang',
+        label: 'Left overhang',
+        edgeLabel: 'H–G',
+        hint: 'Distance from the left cap edge to the centered stem.',
+        min: MIN_DIMENSION / 2,
+        max: (dimensions: Record<string, number>) =>
+          (
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['t-shape'].width,
+            ) - MIN_DIMENSION
+          ) / 2,
+        step: 10,
+        getValue: (dimensions: Record<string, number>) =>
+          (readContextValue(
+            dimensions,
+            'width',
+            defaultDimensions['t-shape'].width,
+          ) -
+            readContextValue(
+              dimensions,
+              'stemWidth',
+              defaultDimensions['t-shape'].stemWidth,
+            )) /
+          2,
+        applyValue: (
+          value: number,
+          dimensions: Record<string, number>,
+        ) => ({
+          ...dimensions,
+          stemWidth:
+            readContextValue(
+              dimensions,
+              'width',
+              defaultDimensions['t-shape'].width,
+            ) -
+            value * 2,
+        }),
       },
     ],
   },

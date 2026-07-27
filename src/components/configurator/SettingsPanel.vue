@@ -59,7 +59,10 @@ const dimensionRecord = computed(
 const resolvedFields = computed(() =>
   currentShapeOption.value.fields.map((field) => ({
     ...field,
-    value: dimensionRecord.value[field.key] ?? 0,
+    value:
+      field.getValue?.(dimensionRecord.value) ??
+      dimensionRecord.value[field.key] ??
+      0,
     min: resolveFieldLimit(field.min, dimensionRecord.value),
     max: resolveFieldLimit(field.max, dimensionRecord.value),
     edgeLabel: field.edgeLabel ?? '',

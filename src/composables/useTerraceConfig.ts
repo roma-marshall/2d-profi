@@ -368,7 +368,8 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     }
 
     const currentDimensions = asNumberRecord(config.value.dimensions)
-    const currentValue = currentDimensions[key]
+    const currentValue =
+      field.getValue?.(currentDimensions) ?? currentDimensions[key]
     const minimum = resolveFieldLimit(field.min, currentDimensions)
     const maximum = resolveFieldLimit(field.max, currentDimensions)
     const lowerBound = Math.min(minimum, maximum)
@@ -382,13 +383,16 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
       return
     }
 
+    const nextDimensions =
+      field.applyValue?.(nextValue, currentDimensions) ?? {
+        ...currentDimensions,
+        [key]: nextValue,
+      }
+
     applyConfig(
       createConfig(
         shape,
-        {
-          ...currentDimensions,
-          [key]: nextValue,
-        },
+        nextDimensions,
         config.value.texture,
         config.value.boardDirection,
         config.value.decking,

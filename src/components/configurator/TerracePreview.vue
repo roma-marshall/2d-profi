@@ -128,23 +128,32 @@ const patternTransform = computed(
     `rotate(${props.config.decking.angle} ${patternOrigin.value.x} ${patternOrigin.value.y}) translate(0 ${props.config.decking.offset})`,
 )
 
-const pointsMatch = (first: Point, second: Point): boolean =>
-  first.x === second.x && first.y === second.y
+const normalizeEdgeLabel = (label: string): string =>
+  label.replace(/[^A-Z]/g, '')
+
+const reverseEdgeId = (edgeId: string): string =>
+  edgeId.length === 2 ? `${edgeId[1]}${edgeId[0]}` : edgeId
 
 const fieldKeyByEdgeId = computed<Record<string, string>>(() =>
   Object.fromEntries(
     geometry.value.edges.flatMap((edge) => {
-      const matchingGuide = geometry.value.dimensionGuides.find(
-        (guide) =>
-          (pointsMatch(edge.start, guide.start) &&
-            pointsMatch(edge.end, guide.end)) ||
-          (pointsMatch(edge.start, guide.end) &&
-            pointsMatch(edge.end, guide.start)),
-      )
+      const matchingField = shapeOptionById[
+        props.config.shape
+      ].fields.find((field) => {
+        if (field.edgeLabel === undefined) {
+          return false
+        }
 
-      return matchingGuide === undefined
+        const fieldEdgeId = normalizeEdgeLabel(field.edgeLabel)
+        return (
+          fieldEdgeId === edge.id ||
+          reverseEdgeId(fieldEdgeId) === edge.id
+        )
+      })
+
+      return matchingField === undefined
         ? []
-        : [[edge.id, matchingGuide.id] as const]
+        : [[edge.id, matchingField.key] as const]
     }),
   ),
 )
