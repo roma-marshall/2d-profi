@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
           </span>
           <div class="min-w-0">
             <h1 class="truncate text-sm font-extrabold tracking-[-0.02em] text-stone-900 sm:text-base">
-              2D Terrace Configurator
+              2D Profi
             </h1>
             <p class="hidden text-[0.625rem] font-medium text-stone-400 sm:block">
               Local terrace planning workspace

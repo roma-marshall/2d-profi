@@ -1,4 +1,4 @@
-# 2D Terrace Configurator
+# 2D Profi
 
 A responsive MVP for configuring a wooden terrace in a precise top-down 2D
 workspace. It is built with Vue 3, Vite, TypeScript, the Composition API,

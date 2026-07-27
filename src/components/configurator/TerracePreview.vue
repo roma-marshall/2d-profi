@@ -69,6 +69,8 @@ const patternId = `terrace-board-pattern-${useId()}`
 const arrowId = `dimension-arrow-${useId()}`
 const previewTitleId = `terrace-preview-title-${useId()}`
 const previewDescriptionId = `terrace-preview-description-${useId()}`
+const APP_SITE_URL = 'https://2d-profi.vercel.app'
+const PRINT_BRAND_LABEL = '2D Profi · https://2d-profi.vercel.app'
 const MIN_ZOOM = 0.65
 const MAX_ZOOM = 5
 
@@ -229,6 +231,23 @@ const labelFontSize = computed(() =>
 )
 
 const annotationScale = computed(() => 1 / zoom.value)
+
+const printBrandWidth = computed(
+  () => PRINT_BRAND_LABEL.length * labelFontSize.value * 0.56 + 24,
+)
+
+const printBrandPosition = computed(() => ({
+  x:
+    visibleViewport.value.x +
+    visibleViewport.value.width -
+    printBrandWidth.value / 2 -
+    18,
+  y:
+    visibleViewport.value.y +
+    visibleViewport.value.height -
+    labelFontSize.value -
+    18,
+}))
 
 const vertexFontSize = computed(() =>
   Math.max(10, maximumExtent.value * 0.025),
@@ -1453,6 +1472,39 @@ watch(
         </g>
       </g>
       </g>
+
+      <a
+        v-if="printMode"
+        :href="APP_SITE_URL"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Visit the 2D Profi website"
+        class="print-brand-link"
+      >
+        <g
+          :transform="`translate(${printBrandPosition.x} ${printBrandPosition.y})`"
+        >
+          <rect
+            :x="-printBrandWidth / 2"
+            :y="-labelFontSize"
+            :width="printBrandWidth"
+            :height="labelFontSize * 2"
+            :rx="labelFontSize"
+            vector-effect="non-scaling-stroke"
+          />
+          <text
+            x="0"
+            y="0"
+            :font-size="labelFontSize"
+            font-family="Inter, ui-sans-serif, system-ui, sans-serif"
+            font-weight="700"
+            text-anchor="middle"
+            dominant-baseline="central"
+          >
+            {{ PRINT_BRAND_LABEL }}
+          </text>
+        </g>
+      </a>
     </svg>
 
     <div
@@ -1607,6 +1659,18 @@ watch(
 
 .special-element--active .special-element__label text {
   fill: #3f612d;
+}
+
+.print-brand-link rect {
+  fill: #fff;
+  fill-opacity: 0.94;
+  stroke: #648349;
+  stroke-opacity: 0.5;
+  stroke-width: 1;
+}
+
+.print-brand-link text {
+  fill: #4f6d39;
 }
 
 .free-form-action {

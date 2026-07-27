@@ -45,8 +45,10 @@ import type {
 } from '@/types/terrace'
 
 export const TERRACE_CONFIG_STORAGE_KEY =
-  '2d-terrace-configurator:config:v2'
+  '2d-profi:config:v2'
 const LEGACY_TERRACE_CONFIG_STORAGE_KEY =
+  '2d-terrace-configurator:config:v2'
+const OLDEST_TERRACE_CONFIG_STORAGE_KEY =
   '2d-terrace-configurator:config:v1'
 
 const DEFAULT_TEXTURE: WoodTextureId = 'natural-oak'
@@ -233,7 +235,8 @@ const readStoredConfig = (storage: Storage | null): TerraceConfig => {
   try {
     const serialized =
       storage.getItem(TERRACE_CONFIG_STORAGE_KEY) ??
-      storage.getItem(LEGACY_TERRACE_CONFIG_STORAGE_KEY)
+      storage.getItem(LEGACY_TERRACE_CONFIG_STORAGE_KEY) ??
+      storage.getItem(OLDEST_TERRACE_CONFIG_STORAGE_KEY)
     if (serialized === null) {
       return createDefaultTerraceConfig()
     }
