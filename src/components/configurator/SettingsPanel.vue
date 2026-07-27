@@ -268,12 +268,15 @@ watch(
               v-for="option in shapeOptions"
               :key="option.id"
               type="button"
-              class="group flex min-h-20 flex-col items-center justify-center gap-2 rounded-lg border px-1.5 py-2 text-center outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7eedf]"
-              :class="
+              class="group flex items-center justify-center gap-2 rounded-lg border px-1.5 py-2 text-center outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7eedf]"
+              :class="[
                 config.shape === option.id
                   ? 'border-[#648349] bg-[#eff5e9] text-[#4d6739] shadow-[inset_0_0_0_1px_rgba(100,131,73,0.12)]'
-                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-800'
-              "
+                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-800',
+                option.id === 'free-form'
+                  ? 'col-span-3 min-h-14 flex-row'
+                  : 'min-h-20 flex-col',
+              ]"
               :aria-pressed="config.shape === option.id"
               :aria-label="`Select ${option.label} terrace`"
               @click="emit('select-shape', option.id)"

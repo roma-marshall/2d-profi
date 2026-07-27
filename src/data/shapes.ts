@@ -669,14 +669,6 @@ export const shapeOptions = [
     ],
   },
   {
-    id: 'free-form',
-    label: 'Free form',
-    shortLabel: 'Free form',
-    description:
-      'Draw an arbitrary polygon by placing and moving points on the grid.',
-    fields: [],
-  },
-  {
     id: 'circle',
     label: 'Circle',
     shortLabel: 'Circle',
@@ -693,6 +685,14 @@ export const shapeOptions = [
       },
     ],
   },
+  {
+    id: 'free-form',
+    label: 'Free form',
+    shortLabel: 'Free form',
+    description:
+      'Draw an arbitrary polygon by placing and moving points on the grid.',
+    fields: [],
+  },
 ] as const satisfies readonly ShapeOption[]
 
 export const shapeOptionById: Record<TerraceShape, ShapeOption> = {
@@ -701,8 +701,8 @@ export const shapeOptionById: Record<TerraceShape, ShapeOption> = {
   't-shape': shapeOptions[2],
   'u-shape': shapeOptions[3],
   'o-shape': shapeOptions[4],
-  'free-form': shapeOptions[5],
-  circle: shapeOptions[6],
+  circle: shapeOptions[5],
+  'free-form': shapeOptions[6],
 }
 
 const terraceShapes = new Set<TerraceShape>(
