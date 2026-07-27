@@ -2,7 +2,16 @@ export type TerraceShape = 'rectangle' | 'l-shape' | 't-shape' | 'circle'
 
 export type WoodTextureId = 'natural-oak' | 'smoked-ash' | 'honey-pine'
 
-export type BoardDirection = 'horizontal' | 'vertical'
+export type BoardDirection = 'horizontal' | 'vertical' | 'custom'
+
+export interface DeckingLayout {
+  /** Board axis angle in degrees, clockwise from horizontal. */
+  angle: number
+  boardWidth: number
+  boardGap: number
+  offset: number
+  startEdgeId: string
+}
 
 export interface RectangleDimensions {
   width: number
@@ -44,6 +53,7 @@ export type TerraceConfig<
     dimensions: ShapeDimensionsMap[Shape]
     texture: WoodTextureId
     boardDirection: BoardDirection
+    decking: DeckingLayout
   }
 }[TShape]
 

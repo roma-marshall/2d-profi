@@ -15,10 +15,14 @@ import type {
 const props = defineProps<{
   config: TerraceConfig
   activeDimensionKey: string | null
+  canUndo: boolean
+  canRedo: boolean
 }>()
 
 const emit = defineEmits<{
   'activate-dimension': [key: string | null]
+  undo: []
+  redo: []
 }>()
 
 interface RenderedDimensionGuide extends DimensionGuide {
@@ -39,6 +43,10 @@ const zoom = ref(1)
 const showDimensions = ref(true)
 const showGrid = ref(true)
 const showDecking = ref(true)
+const pan = ref<Point>({ x: 0, y: 0 })
+const isPanning = ref(false)
+const panPointerId = ref<number | null>(null)
+const lastPointerPosition = ref<Point>({ x: 0, y: 0 })
 
 const geometry = computed(() =>
   createTerraceGeometry(
@@ -82,8 +90,8 @@ const viewBox = computed(() => {
   const viewport = baseViewport.value
   const width = viewport.width / zoom.value
   const height = viewport.height / zoom.value
-  const centerX = viewport.x + viewport.width / 2
-  const centerY = viewport.y + viewport.height / 2
+  const centerX = viewport.x + viewport.width / 2 + pan.value.x
+  const centerY = viewport.y + viewport.height / 2 + pan.value.y
 
   return `${centerX - width / 2} ${centerY - height / 2} ${width} ${height}`
 })
@@ -96,20 +104,28 @@ const vertexFontSize = computed(() =>
   Math.max(10, maximumExtent.value * 0.025),
 )
 
-const boardWidth = computed(() =>
-  Math.max(12, maximumExtent.value / 22),
-)
-
 const patternWidth = computed(() =>
-  props.config.boardDirection === 'horizontal'
-    ? boardWidth.value * 5
-    : boardWidth.value,
+  Math.max(240, maximumExtent.value * 0.9),
 )
 
-const patternHeight = computed(() =>
-  props.config.boardDirection === 'horizontal'
-    ? boardWidth.value
-    : boardWidth.value * 5,
+const patternHeight = computed(
+  () => props.config.decking.boardWidth + props.config.decking.boardGap,
+)
+
+const patternOrigin = computed(() => {
+  const startEdge = geometry.value.edges.find(
+    (edge) => edge.id === props.config.decking.startEdgeId,
+  )
+
+  return startEdge?.start ?? {
+    x: geometry.value.bounds.x,
+    y: geometry.value.bounds.y,
+  }
+})
+
+const patternTransform = computed(
+  () =>
+    `rotate(${props.config.decking.angle} ${patternOrigin.value.x} ${patternOrigin.value.y}) translate(0 ${props.config.decking.offset})`,
 )
 
 const pointsMatch = (first: Point, second: Point): boolean =>
@@ -183,39 +199,24 @@ const renderedGuides = computed<RenderedDimensionGuide[]>(() =>
 )
 
 const grainPath = computed(() => {
-  const board = boardWidth.value
-  const run = board * 5
-
-  if (props.config.boardDirection === 'horizontal') {
-    return [
-      `M ${run * 0.08} ${board * 0.33}`,
-      `C ${run * 0.25} ${board * 0.16}, ${run * 0.4} ${
-        board * 0.58
-      }, ${run * 0.58} ${board * 0.38}`,
-      `S ${run * 0.85} ${board * 0.24}, ${run * 0.96} ${board * 0.5}`,
-    ].join(' ')
-  }
-
+  const board = props.config.decking.boardWidth
+  const run = patternWidth.value
   return [
-    `M ${board * 0.33} ${run * 0.08}`,
-    `C ${board * 0.16} ${run * 0.25}, ${board * 0.58} ${
-      run * 0.4
-    }, ${board * 0.38} ${run * 0.58}`,
-    `S ${board * 0.24} ${run * 0.85}, ${board * 0.5} ${run * 0.96}`,
+    `M ${run * 0.08} ${board * 0.33}`,
+    `C ${run * 0.25} ${board * 0.16}, ${run * 0.4} ${
+      board * 0.58
+    }, ${run * 0.58} ${board * 0.38}`,
+    `S ${run * 0.85} ${board * 0.24}, ${run * 0.96} ${board * 0.5}`,
   ].join(' ')
 })
 
 const secondaryGrainPath = computed(() => {
-  const board = boardWidth.value
-  const run = board * 5
+  const board = props.config.decking.boardWidth
+  const run = patternWidth.value
 
-  return props.config.boardDirection === 'horizontal'
-    ? `M ${run * 0.16} ${board * 0.72} Q ${run * 0.5} ${
-        board * 0.48
-      } ${run * 0.86} ${board * 0.7}`
-    : `M ${board * 0.72} ${run * 0.16} Q ${board * 0.48} ${
-        run * 0.5
-      } ${board * 0.7} ${run * 0.86}`
+  return `M ${run * 0.16} ${board * 0.72} Q ${run * 0.5} ${
+    board * 0.48
+  } ${run * 0.86} ${board * 0.7}`
 })
 
 const edgeLabelBoxWidth = (edge: GeometryEdge): number =>
@@ -231,6 +232,11 @@ const setZoom = (nextZoom: number): void => {
   zoom.value = Math.min(Math.max(nextZoom, 0.65), 2.4)
 }
 
+const resetView = (): void => {
+  zoom.value = 1
+  pan.value = { x: 0, y: 0 }
+}
+
 const handleWheel = (event: WheelEvent): void => {
   const shouldZoom =
     event.ctrlKey ||
@@ -243,6 +249,63 @@ const handleWheel = (event: WheelEvent): void => {
 
   event.preventDefault()
   setZoom(zoom.value + (event.deltaY < 0 ? 0.12 : -0.12))
+}
+
+const handlePointerDown = (event: PointerEvent): void => {
+  const target = event.target
+  if (
+    event.button !== 0 ||
+    (target instanceof Element && target.closest('[role="button"]') !== null)
+  ) {
+    return
+  }
+
+  const svg = event.currentTarget
+  if (!(svg instanceof SVGSVGElement)) {
+    return
+  }
+
+  isPanning.value = true
+  panPointerId.value = event.pointerId
+  lastPointerPosition.value = { x: event.clientX, y: event.clientY }
+  svg.setPointerCapture(event.pointerId)
+}
+
+const handlePointerMove = (event: PointerEvent): void => {
+  if (!isPanning.value || panPointerId.value !== event.pointerId) {
+    return
+  }
+
+  const svg = event.currentTarget
+  if (!(svg instanceof SVGSVGElement)) {
+    return
+  }
+
+  const rect = svg.getBoundingClientRect()
+  const viewportWidth = baseViewport.value.width / zoom.value
+  const viewportHeight = baseViewport.value.height / zoom.value
+  const deltaX = event.clientX - lastPointerPosition.value.x
+  const deltaY = event.clientY - lastPointerPosition.value.y
+
+  pan.value = {
+    x: pan.value.x - (deltaX * viewportWidth) / Math.max(rect.width, 1),
+    y: pan.value.y - (deltaY * viewportHeight) / Math.max(rect.height, 1),
+  }
+  lastPointerPosition.value = { x: event.clientX, y: event.clientY }
+}
+
+const handlePointerUp = (event: PointerEvent): void => {
+  if (panPointerId.value !== event.pointerId) {
+    return
+  }
+
+  const svg = event.currentTarget
+  if (svg instanceof SVGSVGElement && svg.hasPointerCapture(event.pointerId)) {
+    svg.releasePointerCapture(event.pointerId)
+  }
+
+  isPanning.value = false
+  panPointerId.value = null
 }
 
 const activateEdge = (edgeId: string): void => {
@@ -270,7 +333,7 @@ const guideAccessibleLabel = (guide: DimensionGuide): string =>
 watch(
   () => props.config.shape,
   () => {
-    zoom.value = 1
+    resetView()
   },
 )
 </script>
@@ -310,7 +373,25 @@ watch(
     >
       <button
         type="button"
-        class="grid size-10 place-items-center border-b border-stone-200 text-lg font-medium text-stone-700 hover:bg-stone-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+        class="canvas-tool"
+        :disabled="!canUndo"
+        aria-label="Undo last change"
+        @click="emit('undo')"
+      >
+        ↶
+      </button>
+      <button
+        type="button"
+        class="canvas-tool"
+        :disabled="!canRedo"
+        aria-label="Redo last change"
+        @click="emit('redo')"
+      >
+        ↷
+      </button>
+      <button
+        type="button"
+        class="canvas-tool"
         aria-label="Zoom in"
         @click="setZoom(zoom + 0.2)"
       >
@@ -318,7 +399,7 @@ watch(
       </button>
       <button
         type="button"
-        class="grid size-10 place-items-center border-b border-stone-200 text-lg font-medium text-stone-700 hover:bg-stone-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+        class="canvas-tool"
         aria-label="Zoom out"
         @click="setZoom(zoom - 0.2)"
       >
@@ -326,9 +407,9 @@ watch(
       </button>
       <button
         type="button"
-        class="grid size-10 place-items-center text-[0.625rem] font-extrabold tracking-tight text-stone-600 uppercase hover:bg-stone-50 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#648349]"
+        class="canvas-tool canvas-tool--fit"
         aria-label="Fit plan to canvas"
-        @click="setZoom(1)"
+        @click="resetView"
       >
         Fit
       </button>
@@ -342,73 +423,58 @@ watch(
 
     <svg
       class="absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0"
+      :class="isPanning ? 'cursor-grabbing' : 'cursor-grab'"
       :viewBox="viewBox"
       preserveAspectRatio="xMidYMid meet"
       role="group"
       aria-labelledby="terrace-preview-title terrace-preview-description"
       @wheel="handleWheel"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerUp"
+      @pointercancel="handlePointerUp"
       @click.self="emit('activate-dimension', null)"
     >
       <title id="terrace-preview-title">
         {{ shapeLabel }} terrace plan
       </title>
       <desc id="terrace-preview-description">
-        Proportional top-down plan using {{ texture.label }} boards in a
-        {{ config.boardDirection }} direction. Dimensions are shown in
-        centimetres.
+        Proportional top-down plan using {{ texture.label }} boards at
+        {{ config.decking.angle }} degrees. Dimensions are shown in centimetres.
       </desc>
 
       <defs>
         <pattern
           :id="patternId"
           patternUnits="userSpaceOnUse"
+          :x="patternOrigin.x"
+          :y="patternOrigin.y"
           :width="patternWidth"
           :height="patternHeight"
+          :patternTransform="patternTransform"
         >
           <rect
             x="0"
             y="0"
             :width="patternWidth"
             :height="patternHeight"
+            :fill="texture.grainColor"
+            opacity="0.7"
+          />
+          <rect
+            x="0"
+            y="0"
+            :width="patternWidth"
+            :height="config.decking.boardWidth"
             :fill="texture.baseColor"
           />
           <rect
             x="0"
             y="0"
-            :width="
-              config.boardDirection === 'horizontal'
-                ? patternWidth
-                : patternWidth * 0.47
-            "
-            :height="
-              config.boardDirection === 'horizontal'
-                ? patternHeight * 0.47
-                : patternHeight
-            "
+            :width="patternWidth"
+            :height="config.decking.boardWidth * 0.47"
             :fill="texture.secondaryColor"
-            opacity="0.2"
-          />
-          <line
-            v-if="config.boardDirection === 'horizontal'"
-            x1="0"
-            y1="0"
-            :x2="patternWidth"
-            y2="0"
-            :stroke="texture.grainColor"
-            stroke-opacity="0.62"
-            stroke-width="1.2"
-            vector-effect="non-scaling-stroke"
-          />
-          <line
-            v-else
-            x1="0"
-            y1="0"
-            x2="0"
-            :y2="patternHeight"
-            :stroke="texture.grainColor"
-            stroke-opacity="0.62"
-            stroke-width="1.2"
-            vector-effect="non-scaling-stroke"
+            opacity="0.22"
           />
           <path
             :d="grainPath"
@@ -685,6 +751,40 @@ watch(
 
 .terrace-shape {
   filter: drop-shadow(0 8px 8px rgb(48 43 36 / 0.12));
+}
+
+.canvas-tool {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-bottom: 1px solid #e7e5e4;
+  color: #44403c;
+  font-size: 1.125rem;
+  font-weight: 600;
+  outline: none;
+}
+
+.canvas-tool:hover:not(:disabled) {
+  background: #fafaf9;
+}
+
+.canvas-tool:focus-visible {
+  box-shadow: inset 0 0 0 2px #648349;
+}
+
+.canvas-tool:disabled {
+  cursor: not-allowed;
+  color: #d6d3d1;
+}
+
+.canvas-tool--fit {
+  border-bottom: 0;
+  color: #57534e;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
 }
 
 .dimension-edge {

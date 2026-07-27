@@ -8,6 +8,7 @@ const props = withDefaults(
     hint: string
     edgeLabel?: string
     active?: boolean
+    unit?: string
     modelValue: number
     min: number
     max: number
@@ -17,6 +18,7 @@ const props = withDefaults(
     step: 10,
     edgeLabel: '',
     active: false,
+    unit: 'cm',
   },
 )
 
@@ -136,7 +138,7 @@ const blurInput = (event: KeyboardEvent): void => {
         {{ label }}
       </label>
       <span class="text-[0.6875rem] font-medium text-stone-600">
-        {{ min }}–{{ max }} cm
+        {{ min }}–{{ max }} {{ unit }}
       </span>
     </div>
 
@@ -172,7 +174,7 @@ const blurInput = (event: KeyboardEvent): void => {
         class="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-semibold uppercase tracking-[0.08em] text-stone-400"
         aria-hidden="true"
       >
-        cm
+        {{ unit }}
       </span>
     </div>
 
@@ -182,7 +184,7 @@ const blurInput = (event: KeyboardEvent): void => {
       class="mt-1.5 text-xs leading-5 text-rose-600"
       role="alert"
     >
-      Enter a value between {{ min }} and {{ max }} cm.
+      Enter a value between {{ min }} and {{ max }} {{ unit }}.
     </p>
     <p
       v-else

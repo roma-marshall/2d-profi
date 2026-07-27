@@ -13,9 +13,11 @@ persists the latest configuration in `localStorage`.
 - Vertex labels and dimension lines around every plan edge
 - Clickable edge dimensions linked to their corresponding inputs
 - Three wood finishes and two board directions
+- Arbitrary board angle, width, gap, starting edge, and layout offset
 - Three-step floor plan, decking, and review workflow
-- Canvas zoom, fit, grid, dimension, and decking display controls
+- Canvas zoom, pan, fit, undo/redo, grid, dimension, and decking controls
 - Local plan summary with dimensions and finish selections
+- JSON save/load, print view, and a transparent approximate material estimate
 - Context-aware minimum and maximum validation
 - Automatic local persistence and a one-click reset
 - Responsive desktop and mobile layouts
@@ -35,7 +37,8 @@ src/
   types/                     Shared TerraceConfig and geometry types
 ```
 
-`TerraceConfig` is the single typed configuration model. Vue components never
+`TerraceConfig` is the single typed configuration model. It contains the shape,
+dimensions, material, and a normalized `DeckingLayout`. Vue components never
 calculate terrace geometry themselves. Each shape has a pure function that
 turns dimensions into an SVG path, points, bounds, area, vertices, edges, and
 dimension metadata.
@@ -44,7 +47,11 @@ shape does not require changing the preview component.
 
 Validation and storage normalization live outside the UI. This prevents invalid
 or outdated `localStorage` data from reaching the renderer and keeps the
-components focused on interaction and presentation.
+components focused on interaction and presentation. Older saved plans without
+the detailed decking model are migrated automatically when they are loaded.
+
+Undo/redo history is maintained separately from persisted configuration, while
+JSON import uses the same parser and normalization path as `localStorage`.
 
 ## Getting started
 
@@ -68,8 +75,9 @@ npm test
 npm run build
 ```
 
-The geometry test suite covers every shape generator, including paths, points,
-bounds, areas, vertex topology, edge dimensions, and registry dispatch.
+The test suites cover every shape generator, including paths, points, bounds,
+areas, vertex topology, edge dimensions, and registry dispatch. Configuration
+tests cover legacy migration, imported value normalization, and undo/redo.
 
 ## Adding a shape
 
@@ -85,13 +93,14 @@ No change is needed in `TerracePreview.vue`.
 
 For a production configurator, the next useful steps would be:
 
-- Add decimal precision, locale-aware units, and imperial conversion.
 - Add snap-to-grid editing and draggable control points.
-- Model board gaps, edge trims, joist layout, and material waste.
+- Add freeform outlines, multiple terrace areas, and imported site-plan
+  underlays.
+- Model edge trims, joist layout, board cutting, and reusable offcuts.
 - Add pricing and a bill of materials backed by a versioned product catalog.
 - Support shareable URLs, cloud projects, authentication, and server-side
   validation.
-- Add export to PDF/DXF, print layouts, and accessible text summaries.
+- Add PDF/DXF export and construction-grade print layouts.
 - Expand tests with component interaction, visual regression, and end-to-end
   browser coverage.
 - Add telemetry, error reporting, content security policies, and a documented

@@ -85,6 +85,27 @@ button:not(:disabled) {
     border: 0;
     box-shadow: none;
   }
+
+  body:has(.plan-summary-dialog[open]) .configurator-workspace {
+    display: none !important;
+  }
+
+  .plan-summary-dialog[open] {
+    position: static;
+    display: block;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .plan-summary-dialog header {
+    display: flex !important;
+  }
+
+  .plan-summary-dialog footer {
+    display: none !important;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

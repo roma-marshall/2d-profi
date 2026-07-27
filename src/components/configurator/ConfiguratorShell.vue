@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import SettingsPanel from '@/components/configurator/SettingsPanel.vue'
 import TerracePreview from '@/components/configurator/TerracePreview.vue'
@@ -15,10 +15,20 @@ const {
   config,
   areaSquareMeters,
   isSaved,
+  canUndo,
+  canRedo,
   selectShape,
   updateDimension,
   setTexture,
   setBoardDirection,
+  setBoardAngle,
+  setBoardWidth,
+  setBoardGap,
+  setBoardOffset,
+  setStartEdge,
+  replaceConfig,
+  undo,
+  redo,
   resetConfig,
 } = useTerraceConfig()
 
@@ -27,6 +37,12 @@ const activeDimensionKey = ref<string | null>(null)
 const summaryOpen = ref(false)
 const summaryDialog = ref<HTMLDialogElement | null>(null)
 const summaryTrigger = ref<HTMLButtonElement | null>(null)
+const configFileInput = ref<HTMLInputElement | null>(null)
+const notification = ref<{
+  type: 'success' | 'error'
+  message: string
+} | null>(null)
+let notificationTimer: ReturnType<typeof setTimeout> | undefined
 
 const shapeLabel = computed(() => shapeOptionById[config.value.shape].label)
 const textureLabel = computed(
@@ -43,6 +59,31 @@ const footprint = computed(
     `${Math.round(geometry.value.bounds.width)} × ${Math.round(
       geometry.value.bounds.height,
     )} cm`,
+)
+
+const boardLayoutLabel = computed(() =>
+  config.value.boardDirection === 'custom'
+    ? `${config.value.decking.angle}° custom`
+    : `${config.value.boardDirection} (${config.value.decking.angle}°)`,
+)
+
+const edgeOptions = computed(() =>
+  geometry.value.edges.map((edge) => ({
+    id: edge.id,
+    label: `${edge.startVertexId}–${edge.endVertexId} · ${
+      Math.round(edge.length * 10) / 10
+    } cm`,
+  })),
+)
+
+const estimatedDeckingArea = computed(() => areaSquareMeters.value * 1.1)
+const estimatedLinearMeters = computed(
+  () =>
+    estimatedDeckingArea.value /
+    (config.value.decking.boardWidth / 100),
+)
+const estimatedThreeMeterBoards = computed(() =>
+  Math.ceil(estimatedLinearMeters.value / 3),
 )
 
 const dimensionSummary = computed(() => {
@@ -135,6 +176,108 @@ const handleSummaryCancel = (event: Event): void => {
   event.preventDefault()
   closeSummary()
 }
+
+const showNotification = (
+  message: string,
+  type: 'success' | 'error' = 'success',
+): void => {
+  notification.value = { message, type }
+
+  if (notificationTimer !== undefined) {
+    clearTimeout(notificationTimer)
+  }
+
+  notificationTimer = setTimeout(() => {
+    notification.value = null
+  }, 3200)
+}
+
+const exportConfig = (): void => {
+  const blob = new Blob([JSON.stringify(config.value, null, 2)], {
+    type: 'application/json',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = 'terrace-plan.json'
+  anchor.click()
+  URL.revokeObjectURL(url)
+  showNotification('Plan file saved.')
+}
+
+const triggerConfigImport = (): void => {
+  configFileInput.value?.click()
+}
+
+const handleConfigImport = async (event: Event): Promise<void> => {
+  const input = event.currentTarget
+  if (!(input instanceof HTMLInputElement)) {
+    return
+  }
+
+  const file = input.files?.[0]
+  input.value = ''
+  if (file === undefined) {
+    return
+  }
+
+  try {
+    const parsed = JSON.parse(await file.text()) as unknown
+    if (!replaceConfig(parsed)) {
+      throw new TypeError('Unsupported terrace configuration')
+    }
+
+    activeSection.value = 'layout'
+    activeDimensionKey.value = null
+    showNotification('Plan loaded successfully.')
+  } catch {
+    showNotification('This file is not a valid terrace plan.', 'error')
+  }
+}
+
+const printPlan = (): void => {
+  window.print()
+}
+
+const handleHistoryShortcut = (event: KeyboardEvent): void => {
+  const target = event.target
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  ) {
+    return
+  }
+
+  const modifier = event.metaKey || event.ctrlKey
+  if (!modifier) {
+    return
+  }
+
+  if (event.key.toLowerCase() === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) {
+      redo()
+    } else {
+      undo()
+    }
+  } else if (event.key.toLowerCase() === 'y') {
+    event.preventDefault()
+    redo()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleHistoryShortcut)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleHistoryShortcut)
+
+  if (notificationTimer !== undefined) {
+    clearTimeout(notificationTimer)
+  }
+})
 </script>
 
 <template>
@@ -158,16 +301,44 @@ const handleSummaryCancel = (event: Event): void => {
           </div>
         </div>
 
-        <button
-          ref="summaryTrigger"
-          type="button"
-          class="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#648349] px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
-          @click="openSummary"
-        >
-          <span aria-hidden="true">▤</span>
-          <span class="hidden sm:inline">Plan summary</span>
-          <span class="sm:hidden">Summary</span>
-        </button>
+        <div class="flex shrink-0 items-center gap-1.5">
+          <input
+            ref="configFileInput"
+            type="file"
+            accept="application/json,.json"
+            class="sr-only"
+            tabindex="-1"
+            @change="handleConfigImport"
+          />
+          <button
+            type="button"
+            class="header-action"
+            aria-label="Load terrace plan"
+            @click="triggerConfigImport"
+          >
+            <span aria-hidden="true">↥</span>
+            <span class="hidden lg:inline">Load</span>
+          </button>
+          <button
+            type="button"
+            class="header-action"
+            aria-label="Save terrace plan as JSON"
+            @click="exportConfig"
+          >
+            <span aria-hidden="true">↧</span>
+            <span class="hidden lg:inline">Save</span>
+          </button>
+          <button
+            ref="summaryTrigger"
+            type="button"
+            class="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#648349] px-3 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
+            @click="openSummary"
+          >
+            <span aria-hidden="true">▤</span>
+            <span class="hidden sm:inline">Plan summary</span>
+            <span class="sm:hidden">Summary</span>
+          </button>
+        </div>
       </div>
 
       <nav
@@ -231,8 +402,12 @@ const handleSummaryCancel = (event: Event): void => {
         <TerracePreview
           :config="config"
           :active-dimension-key="activeDimensionKey"
+          :can-undo="canUndo"
+          :can-redo="canRedo"
           class="min-h-0 flex-1"
           @activate-dimension="handleDimensionActivation"
+          @undo="undo"
+          @redo="redo"
         />
 
         <dl
@@ -267,7 +442,7 @@ const handleSummaryCancel = (event: Event): void => {
               Boards
             </dt>
             <dd class="mt-0.5 text-xs font-extrabold capitalize text-stone-900">
-              {{ config.boardDirection }}
+              {{ boardLayoutLabel }}
             </dd>
           </div>
         </dl>
@@ -279,15 +454,44 @@ const handleSummaryCancel = (event: Event): void => {
         :is-saved="isSaved"
         :active-section="activeSection"
         :active-dimension-key="activeDimensionKey"
+        :edge-options="edgeOptions"
         @select-shape="handleShapeSelection"
         @update-dimension="handleDimensionUpdate"
         @set-texture="setTexture"
         @set-direction="setBoardDirection"
+        @set-board-angle="setBoardAngle"
+        @set-board-width="setBoardWidth"
+        @set-board-gap="setBoardGap"
+        @set-board-offset="setBoardOffset"
+        @set-start-edge="setStartEdge"
         @update:active-section="activeSection = $event"
         @activate-dimension="handleDimensionActivation"
         @reset="handleReset"
       />
     </main>
+
+    <Transition
+      enter-active-class="transition duration-200"
+      enter-from-class="-translate-y-2 opacity-0"
+      leave-active-class="transition duration-150"
+      leave-to-class="-translate-y-2 opacity-0"
+    >
+      <div
+        v-if="notification"
+        class="fixed top-3 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-lg border px-3.5 py-2.5 text-xs font-bold shadow-lg"
+        :class="
+          notification.type === 'success'
+            ? 'border-[#d8e4cd] bg-[#f2f7ed] text-[#4f6d39]'
+            : 'border-rose-200 bg-rose-50 text-rose-700'
+        "
+        :role="notification.type === 'error' ? 'alert' : 'status'"
+      >
+        <span aria-hidden="true">
+          {{ notification.type === 'success' ? '✓' : '!' }}
+        </span>
+        {{ notification.message }}
+      </div>
+    </Transition>
 
     <dialog
       ref="summaryDialog"
@@ -377,10 +581,52 @@ const handleSummaryCancel = (event: Event): void => {
                 </tr>
                 <tr>
                   <th class="px-4 py-3 font-medium text-stone-500">
-                    Board direction
+                    Board layout
                   </th>
-                  <td class="px-4 py-3 text-right font-bold capitalize text-stone-900">
-                    {{ config.boardDirection }}
+                  <td class="px-4 py-3 text-right font-bold text-stone-900">
+                    {{ boardLayoutLabel }}
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    Board width / gap
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    {{ config.decking.boardWidth }} /
+                    {{ config.decking.boardGap }} cm
+                  </td>
+                </tr>
+                <tr>
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    Starting edge / offset
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    {{ config.decking.startEdgeId }} /
+                    {{ config.decking.offset }} cm
+                  </td>
+                </tr>
+                <tr class="bg-[#fafcf8]">
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    Decking with 10% reserve
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    {{ estimatedDeckingArea.toFixed(2) }} m²
+                  </td>
+                </tr>
+                <tr class="bg-[#fafcf8]">
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    Approximate linear metres
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    {{ estimatedLinearMeters.toFixed(1) }} m
+                  </td>
+                </tr>
+                <tr class="bg-[#fafcf8]">
+                  <th class="px-4 py-3 font-medium text-stone-500">
+                    Approximate 3 m boards
+                  </th>
+                  <td class="px-4 py-3 text-right font-bold tabular-nums text-stone-900">
+                    ≈ {{ estimatedThreeMeterBoards }}
                   </td>
                 </tr>
               </tbody>
@@ -394,8 +640,22 @@ const handleSummaryCancel = (event: Event): void => {
         </div>
 
         <footer
-          class="flex items-center justify-end border-t border-stone-200 bg-stone-50 px-5 py-3"
+          class="flex flex-wrap items-center justify-end gap-2 border-t border-stone-200 bg-stone-50 px-5 py-3"
         >
+          <button
+            type="button"
+            class="rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-200"
+            @click="printPlan"
+          >
+            Print plan
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-200"
+            @click="exportConfig"
+          >
+            Save JSON
+          </button>
           <button
             type="button"
             class="rounded-lg bg-stone-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-stone-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-stone-200"
@@ -410,6 +670,35 @@ const handleSummaryCancel = (event: Event): void => {
 </template>
 
 <style scoped>
+.header-action {
+  display: inline-flex;
+  height: 2.25rem;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #e7e5e4;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding-inline: 0.65rem;
+  color: #57534e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.header-action:hover {
+  border-color: #d6d3d1;
+  background: #fafaf9;
+  color: #1c1917;
+}
+
+.header-action:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px #e7eedf;
+}
+
 .plan-summary-dialog::backdrop {
   background: rgb(12 10 9 / 0.46);
   backdrop-filter: blur(2px);

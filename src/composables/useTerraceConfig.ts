@@ -7,9 +7,15 @@ import {
   resolveFieldLimit,
   shapeOptionById,
 } from '@/data/shapes'
+import {
+  DECKING_LIMITS,
+  DEFAULT_DECKING_LAYOUT,
+} from '@/data/decking'
 import { isWoodTextureId } from '@/data/textures'
+import { createTerraceGeometry } from '@/geometry/registry'
 import type {
   BoardDirection,
+  DeckingLayout,
   TerraceConfig,
   TerraceDimensions,
   TerraceShape,
@@ -17,33 +23,117 @@ import type {
 } from '@/types/terrace'
 
 export const TERRACE_CONFIG_STORAGE_KEY =
+  '2d-terrace-configurator:config:v2'
+const LEGACY_TERRACE_CONFIG_STORAGE_KEY =
   '2d-terrace-configurator:config:v1'
 
 const DEFAULT_TEXTURE: WoodTextureId = 'natural-oak'
 const DEFAULT_BOARD_DIRECTION: BoardDirection = 'horizontal'
 const DEFAULT_SHAPE: TerraceShape = 'rectangle'
+const HISTORY_LIMIT = 50
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const isBoardDirection = (value: unknown): value is BoardDirection =>
-  value === 'horizontal' || value === 'vertical'
+  value === 'horizontal' || value === 'vertical' || value === 'custom'
 
 const asNumberRecord = (
   dimensions: TerraceDimensions,
 ): Record<string, number> => dimensions as unknown as Record<string, number>
+
+const clamp = (value: number, minimum: number, maximum: number): number =>
+  Math.min(Math.max(value, minimum), maximum)
+
+const normalizeNumber = (
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+
+  return Math.round(clamp(value, minimum, maximum) * 10) / 10
+}
+
+const directionFromAngle = (angle: number): BoardDirection => {
+  if (angle === 0) {
+    return 'horizontal'
+  }
+
+  if (angle === 90) {
+    return 'vertical'
+  }
+
+  return 'custom'
+}
+
+const normalizeDeckingLayout = (
+  value: unknown,
+  legacyDirection: BoardDirection = DEFAULT_BOARD_DIRECTION,
+): DeckingLayout => {
+  const record = isRecord(value) ? value : {}
+  const fallbackAngle = legacyDirection === 'vertical' ? 90 : 0
+  const angle = normalizeNumber(
+    record.angle,
+    fallbackAngle,
+    DECKING_LIMITS.angle.min,
+    DECKING_LIMITS.angle.max,
+  )
+
+  return {
+    angle,
+    boardWidth: normalizeNumber(
+      record.boardWidth,
+      DEFAULT_DECKING_LAYOUT.boardWidth,
+      DECKING_LIMITS.boardWidth.min,
+      DECKING_LIMITS.boardWidth.max,
+    ),
+    boardGap: normalizeNumber(
+      record.boardGap,
+      DEFAULT_DECKING_LAYOUT.boardGap,
+      DECKING_LIMITS.boardGap.min,
+      DECKING_LIMITS.boardGap.max,
+    ),
+    offset: normalizeNumber(
+      record.offset,
+      DEFAULT_DECKING_LAYOUT.offset,
+      DECKING_LIMITS.offset.min,
+      DECKING_LIMITS.offset.max,
+    ),
+    startEdgeId:
+      typeof record.startEdgeId === 'string' &&
+      /^[A-Z]{2}$/.test(record.startEdgeId)
+        ? record.startEdgeId
+        : DEFAULT_DECKING_LAYOUT.startEdgeId,
+  }
+}
 
 const createConfig = <TShape extends TerraceShape>(
   shape: TShape,
   dimensions: unknown,
   texture: WoodTextureId,
   boardDirection: BoardDirection,
-): TerraceConfig<TShape> => ({
-  shape,
-  dimensions: normalizeDimensions(shape, dimensions),
-  texture,
-  boardDirection,
-})
+  decking: unknown,
+): TerraceConfig<TShape> => {
+  const normalizedDecking = normalizeDeckingLayout(decking, boardDirection)
+
+  return {
+    shape,
+    dimensions: normalizeDimensions(shape, dimensions),
+    texture,
+    boardDirection: directionFromAngle(normalizedDecking.angle),
+    decking: normalizedDecking,
+  }
+}
+
+const serializeConfig = (config: TerraceConfig): string =>
+  JSON.stringify(config)
+
+const cloneConfig = (config: TerraceConfig): TerraceConfig =>
+  JSON.parse(serializeConfig(config)) as TerraceConfig
 
 export const createDefaultTerraceConfig = (): TerraceConfig =>
   createConfig(
@@ -51,6 +141,7 @@ export const createDefaultTerraceConfig = (): TerraceConfig =>
     cloneDefaultDimensions(DEFAULT_SHAPE),
     DEFAULT_TEXTURE,
     DEFAULT_BOARD_DIRECTION,
+    DEFAULT_DECKING_LAYOUT,
   )
 
 export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
@@ -65,12 +156,26 @@ export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
     ? value.boardDirection
     : DEFAULT_BOARD_DIRECTION
 
-  return createConfig(
+  const config = createConfig(
     value.shape,
     value.dimensions,
     texture,
     boardDirection,
+    value.decking,
   )
+  const geometry = createTerraceGeometry(
+    config.shape,
+    config.dimensions as TerraceDimensions,
+  )
+
+  if (
+    !geometry.edges.some((edge) => edge.id === config.decking.startEdgeId)
+  ) {
+    config.decking.startEdgeId =
+      geometry.edges[0]?.id ?? DEFAULT_DECKING_LAYOUT.startEdgeId
+  }
+
+  return config
 }
 
 const readStoredConfig = (storage: Storage | null): TerraceConfig => {
@@ -79,7 +184,9 @@ const readStoredConfig = (storage: Storage | null): TerraceConfig => {
   }
 
   try {
-    const serialized = storage.getItem(TERRACE_CONFIG_STORAGE_KEY)
+    const serialized =
+      storage.getItem(TERRACE_CONFIG_STORAGE_KEY) ??
+      storage.getItem(LEGACY_TERRACE_CONFIG_STORAGE_KEY)
     if (serialized === null) {
       return createDefaultTerraceConfig()
     }
@@ -142,10 +249,20 @@ export interface UseTerraceConfigReturn {
   config: Ref<TerraceConfig>
   areaSquareMeters: ComputedRef<number>
   isSaved: Ref<boolean>
+  canUndo: ComputedRef<boolean>
+  canRedo: ComputedRef<boolean>
   selectShape: (shape: TerraceShape) => void
   updateDimension: (key: string, value: number) => void
   setTexture: (texture: WoodTextureId) => void
   setBoardDirection: (direction: BoardDirection) => void
+  setBoardAngle: (angle: number) => void
+  setBoardWidth: (width: number) => void
+  setBoardGap: (gap: number) => void
+  setBoardOffset: (offset: number) => void
+  setStartEdge: (edgeId: string) => void
+  replaceConfig: (value: unknown) => boolean
+  undo: () => void
+  redo: () => void
   resetConfig: () => void
 }
 
@@ -155,6 +272,8 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     readStoredConfig(storage),
   ) as Ref<TerraceConfig>
   const isSaved = ref(false)
+  const undoStack = ref<TerraceConfig[]>([])
+  const redoStack = ref<TerraceConfig[]>([])
 
   const persistConfig = (nextConfig: TerraceConfig): void => {
     if (storage === null) {
@@ -165,10 +284,7 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     isSaved.value = false
 
     try {
-      storage.setItem(
-        TERRACE_CONFIG_STORAGE_KEY,
-        JSON.stringify(nextConfig),
-      )
+      storage.setItem(TERRACE_CONFIG_STORAGE_KEY, serializeConfig(nextConfig))
       isSaved.value = true
     } catch {
       isSaved.value = false
@@ -184,17 +300,60 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
   const areaSquareMeters = computed(
     () => calculateAreaSquareCentimeters(config.value) / 10_000,
   )
+  const canUndo = computed(() => undoStack.value.length > 0)
+  const canRedo = computed(() => redoStack.value.length > 0)
+
+  const applyConfig = (
+    nextConfig: TerraceConfig,
+    recordHistory = true,
+  ): void => {
+    if (serializeConfig(nextConfig) === serializeConfig(config.value)) {
+      return
+    }
+
+    if (recordHistory) {
+      undoStack.value.push(cloneConfig(config.value))
+      if (undoStack.value.length > HISTORY_LIMIT) {
+        undoStack.value.shift()
+      }
+      redoStack.value = []
+    }
+
+    config.value = cloneConfig(nextConfig)
+  }
+
+  const updateDecking = (patch: Partial<DeckingLayout>): void => {
+    const decking = normalizeDeckingLayout(
+      {
+        ...config.value.decking,
+        ...patch,
+      },
+      config.value.boardDirection,
+    )
+
+    applyConfig({
+      ...config.value,
+      boardDirection: directionFromAngle(decking.angle),
+      decking,
+    })
+  }
 
   const selectShape = (shape: TerraceShape): void => {
     if (!isTerraceShape(shape) || shape === config.value.shape) {
       return
     }
 
-    config.value = createConfig(
-      shape,
-      cloneDefaultDimensions(shape),
-      config.value.texture,
-      config.value.boardDirection,
+    applyConfig(
+      createConfig(
+        shape,
+        cloneDefaultDimensions(shape),
+        config.value.texture,
+        config.value.boardDirection,
+        {
+          ...config.value.decking,
+          startEdgeId: DEFAULT_DECKING_LAYOUT.startEdgeId,
+        },
+      ),
     )
   }
 
@@ -223,14 +382,17 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
       return
     }
 
-    config.value = createConfig(
-      shape,
-      {
-        ...currentDimensions,
-        [key]: nextValue,
-      },
-      config.value.texture,
-      config.value.boardDirection,
+    applyConfig(
+      createConfig(
+        shape,
+        {
+          ...currentDimensions,
+          [key]: nextValue,
+        },
+        config.value.texture,
+        config.value.boardDirection,
+        config.value.decking,
+      ),
     )
   }
 
@@ -239,38 +401,98 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
       return
     }
 
-    config.value = {
+    applyConfig({
       ...config.value,
       texture,
-    }
+    })
   }
 
   const setBoardDirection = (direction: BoardDirection): void => {
-    if (
-      !isBoardDirection(direction) ||
-      direction === config.value.boardDirection
-    ) {
+    if (!isBoardDirection(direction) || direction === 'custom') {
       return
     }
 
-    config.value = {
-      ...config.value,
-      boardDirection: direction,
+    updateDecking({
+      angle: direction === 'horizontal' ? 0 : 90,
+    })
+  }
+
+  const setBoardAngle = (angle: number): void => {
+    updateDecking({ angle })
+  }
+
+  const setBoardWidth = (width: number): void => {
+    updateDecking({ boardWidth: width })
+  }
+
+  const setBoardGap = (gap: number): void => {
+    updateDecking({ boardGap: gap })
+  }
+
+  const setBoardOffset = (offset: number): void => {
+    updateDecking({ offset })
+  }
+
+  const setStartEdge = (edgeId: string): void => {
+    if (!/^[A-Z]{2}$/.test(edgeId)) {
+      return
     }
+
+    updateDecking({ startEdgeId: edgeId })
+  }
+
+  const replaceConfig = (value: unknown): boolean => {
+    const parsed = parseTerraceConfig(value)
+    if (parsed === null) {
+      return false
+    }
+
+    applyConfig(parsed)
+    return true
+  }
+
+  const undo = (): void => {
+    const previous = undoStack.value.pop()
+    if (previous === undefined) {
+      return
+    }
+
+    redoStack.value.push(cloneConfig(config.value))
+    applyConfig(previous, false)
+  }
+
+  const redo = (): void => {
+    const next = redoStack.value.pop()
+    if (next === undefined) {
+      return
+    }
+
+    undoStack.value.push(cloneConfig(config.value))
+    applyConfig(next, false)
   }
 
   const resetConfig = (): void => {
-    config.value = createDefaultTerraceConfig()
+    applyConfig(createDefaultTerraceConfig())
   }
 
   return {
     config,
     areaSquareMeters,
     isSaved,
+    canUndo,
+    canRedo,
     selectShape,
     updateDimension,
     setTexture,
     setBoardDirection,
+    setBoardAngle,
+    setBoardWidth,
+    setBoardGap,
+    setBoardOffset,
+    setStartEdge,
+    replaceConfig,
+    undo,
+    redo,
     resetConfig,
   }
 }

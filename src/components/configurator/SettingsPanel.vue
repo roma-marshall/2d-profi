@@ -8,6 +8,7 @@ import {
   shapeOptionById,
   shapeOptions,
 } from '@/data/shapes'
+import { DECKING_LIMITS } from '@/data/decking'
 import { woodTextureById, woodTextures } from '@/data/textures'
 import type {
   BoardDirection,
@@ -25,6 +26,7 @@ const props = defineProps<{
   isSaved: boolean
   activeSection: ConfiguratorSection
   activeDimensionKey: string | null
+  edgeOptions: readonly { id: string; label: string }[]
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +34,11 @@ const emit = defineEmits<{
   'update-dimension': [payload: { key: string; value: number }]
   'set-texture': [texture: WoodTextureId]
   'set-direction': [direction: BoardDirection]
+  'set-board-angle': [angle: number]
+  'set-board-width': [width: number]
+  'set-board-gap': [gap: number]
+  'set-board-offset': [offset: number]
+  'set-start-edge': [edgeId: string]
   'update:active-section': [section: ConfiguratorSection]
   'activate-dimension': [key: string | null]
   reset: []
@@ -68,6 +75,22 @@ const areaLabel = computed(() =>
 
 const selectedTexture = computed(
   () => woodTextureById[props.config.texture],
+)
+
+const boardLayoutLabel = computed(() =>
+  props.config.boardDirection === 'custom'
+    ? `${props.config.decking.angle}° custom`
+    : `${props.config.boardDirection} (${props.config.decking.angle}°)`,
+)
+
+const estimatedLinearMeters = computed(
+  () =>
+    (props.areaSquareMeters * 1.1) /
+    (props.config.decking.boardWidth / 100),
+)
+
+const estimatedThreeMeterBoards = computed(() =>
+  Math.ceil(estimatedLinearMeters.value / 3),
 )
 
 const boardDirections = [
@@ -319,7 +342,7 @@ watch(
           <span class="min-w-0 flex-1">
             <span class="block text-sm font-bold text-stone-900">Decking</span>
             <span class="mt-0.5 block truncate text-[0.6875rem] text-stone-400">
-              {{ selectedTexture.label }} · {{ config.boardDirection }}
+              {{ selectedTexture.label }} · {{ boardLayoutLabel }}
             </span>
           </span>
           <span
@@ -414,6 +437,93 @@ watch(
             </button>
           </div>
 
+          <div class="my-4 h-px bg-stone-200" aria-hidden="true" />
+
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <p class="text-xs font-bold text-stone-800">
+              Detailed layout
+            </p>
+            <span
+              v-if="config.boardDirection === 'custom'"
+              class="rounded-full bg-[#eaf1e4] px-2 py-1 text-[0.5625rem] font-bold text-[#52723b]"
+            >
+              Custom angle
+            </span>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <DimensionField
+              id="decking-angle"
+              label="Board angle"
+              hint="Clockwise rotation from the horizontal axis."
+              unit="°"
+              :model-value="config.decking.angle"
+              :min="DECKING_LIMITS.angle.min"
+              :max="DECKING_LIMITS.angle.max"
+              :step="1"
+              @update:model-value="emit('set-board-angle', $event)"
+            />
+            <DimensionField
+              id="decking-board-width"
+              label="Board width"
+              hint="Visible face width of one deck board."
+              :model-value="config.decking.boardWidth"
+              :min="DECKING_LIMITS.boardWidth.min"
+              :max="DECKING_LIMITS.boardWidth.max"
+              :step="0.1"
+              @update:model-value="emit('set-board-width', $event)"
+            />
+            <DimensionField
+              id="decking-board-gap"
+              label="Joint gap"
+              hint="Spacing between adjacent boards."
+              :model-value="config.decking.boardGap"
+              :min="DECKING_LIMITS.boardGap.min"
+              :max="DECKING_LIMITS.boardGap.max"
+              :step="0.1"
+              @update:model-value="emit('set-board-gap', $event)"
+            />
+            <DimensionField
+              id="decking-board-offset"
+              label="First board offset"
+              hint="Shift the board pattern from the selected edge."
+              :model-value="config.decking.offset"
+              :min="DECKING_LIMITS.offset.min"
+              :max="DECKING_LIMITS.offset.max"
+              :step="1"
+              @update:model-value="emit('set-board-offset', $event)"
+            />
+          </div>
+
+          <label
+            for="decking-start-edge"
+            class="mt-4 block text-[0.8125rem] font-semibold text-stone-800"
+          >
+            Starting edge
+          </label>
+          <select
+            id="decking-start-edge"
+            :value="config.decking.startEdgeId"
+            class="mt-2 h-11 w-full rounded-lg border border-stone-200 bg-white px-3.5 text-sm font-semibold text-stone-900 outline-none transition hover:border-stone-300 focus:border-[#648349] focus:ring-4 focus:ring-[#e7eedf]"
+            @change="
+              emit(
+                'set-start-edge',
+                ($event.currentTarget as HTMLSelectElement).value,
+              )
+            "
+          >
+            <option
+              v-for="edge in edgeOptions"
+              :key="edge.id"
+              :value="edge.id"
+            >
+              {{ edge.label }}
+            </option>
+          </select>
+          <p class="mt-1.5 text-xs leading-5 text-stone-600">
+            The board pattern starts relative to this boundary.
+          </p>
+
           <button
             type="button"
             class="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-[#648349] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#56743e] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#dce8d1]"
@@ -482,8 +592,20 @@ watch(
               </div>
               <div class="flex items-center justify-between gap-4 px-3 py-2.5">
                 <dt class="text-stone-400">Direction</dt>
-                <dd class="font-bold capitalize text-stone-900">
-                  {{ config.boardDirection }}
+                <dd class="font-bold text-stone-900">
+                  {{ boardLayoutLabel }}
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Board width / gap</dt>
+                <dd class="font-bold tabular-nums text-stone-900">
+                  {{ config.decking.boardWidth }} / {{ config.decking.boardGap }} cm
+                </dd>
+              </div>
+              <div class="flex items-center justify-between gap-4 px-3 py-2.5">
+                <dt class="text-stone-400">Estimated 3 m boards</dt>
+                <dd class="font-bold tabular-nums text-stone-900">
+                  ≈ {{ estimatedThreeMeterBoards }}
                 </dd>
               </div>
             </dl>
