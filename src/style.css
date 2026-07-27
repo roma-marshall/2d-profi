@@ -91,7 +91,7 @@ button:not(:disabled) {
     box-shadow: none;
   }
 
-  body:has(.plan-summary-dialog[open]) .configurator-workspace {
+  .app-shell--summary-open .configurator-workspace {
     display: none !important;
   }
 
@@ -130,8 +130,10 @@ button:not(:disabled) {
   }
 
   .print-plan-preview.preview-stage > svg {
+    display: block !important;
     top: 0 !important;
     bottom: 0 !important;
+    width: 100% !important;
     height: 100% !important;
     min-height: 0 !important;
   }

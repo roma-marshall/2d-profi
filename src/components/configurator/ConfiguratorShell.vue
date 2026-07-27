@@ -251,6 +251,12 @@ const handleSummaryCancel = (event: Event): void => {
   closeSummary()
 }
 
+const handleSummaryBackdropClick = (event: MouseEvent): void => {
+  if (event.target === event.currentTarget) {
+    closeSummary()
+  }
+}
+
 const showNotification = (
   message: string,
   type: 'success' | 'error' = 'success',
@@ -443,7 +449,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-shell min-h-dvh text-[#252720]">
+  <div
+    class="app-shell min-h-dvh text-[#252720]"
+    :class="{ 'app-shell--summary-open': summaryOpen }"
+  >
     <header class="border-b border-stone-200 bg-white">
       <div class="flex h-14 items-center justify-between gap-4 px-4 lg:px-5">
         <div class="flex min-w-0 items-center gap-3">
@@ -705,6 +714,7 @@ onBeforeUnmount(() => {
       class="plan-summary-dialog m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto border-0 bg-transparent p-0"
       aria-labelledby="plan-summary-title"
       @cancel="handleSummaryCancel"
+      @click="handleSummaryBackdropClick"
       @close="summaryOpen = false"
     >
       <section
@@ -742,6 +752,7 @@ onBeforeUnmount(() => {
             :active-special-element-id="null"
             :can-undo="false"
             :can-redo="false"
+            :print-mode="true"
             aria-hidden="true"
           />
 

@@ -31,6 +31,7 @@ const props = defineProps<{
   activeSpecialElementId: string | null
   canUndo: boolean
   canRedo: boolean
+  printMode?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -170,7 +171,9 @@ const maximumExtent = computed(() =>
 )
 
 const viewPadding = computed(() =>
-  Math.max(96, maximumExtent.value * 0.22),
+  props.printMode === true
+    ? Math.max(150, maximumExtent.value * 0.38)
+    : Math.max(96, maximumExtent.value * 0.22),
 )
 
 const baseViewport = computed(() => {
@@ -812,6 +815,7 @@ watch(
     :class="{ 'preview-stage--grid': showGrid }"
   >
     <div
+      v-if="!printMode"
       class="absolute inset-x-0 top-0 z-20 flex h-11 items-center justify-between border-b border-stone-300/80 bg-white/92 px-3 backdrop-blur"
     >
       <div class="flex h-full items-center gap-1">
@@ -839,6 +843,7 @@ watch(
     </div>
 
     <div
+      v-if="!printMode"
       class="absolute top-14 left-3 z-20 grid overflow-hidden rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
       aria-label="Canvas zoom controls"
     >
@@ -935,7 +940,7 @@ watch(
     </div>
 
     <div
-      v-if="isFreeForm"
+      v-if="!printMode && isFreeForm"
       data-free-form-control
       class="absolute top-14 right-3 z-20 rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
       :class="isFreeFormClosed ? 'p-2' : 'w-56 p-3'"
@@ -991,14 +996,18 @@ watch(
 
     <svg
       ref="svgRef"
-      class="absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0"
-      :class="
-        isPanning || draggedSpecialElementId !== null
-          ? 'cursor-grabbing'
-          : isFreeForm && !isFreeFormClosed
-            ? 'cursor-crosshair'
-            : 'cursor-grab'
-      "
+      :class="[
+        printMode
+          ? 'absolute inset-0 h-full min-h-0 w-full'
+          : 'absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0',
+        printMode
+          ? ''
+          : isPanning || draggedSpecialElementId !== null
+            ? 'cursor-grabbing'
+            : isFreeForm && !isFreeFormClosed
+              ? 'cursor-crosshair'
+              : 'cursor-grab',
+      ]"
       :viewBox="viewBox"
       preserveAspectRatio="xMidYMid meet"
       role="group"
@@ -1447,6 +1456,7 @@ watch(
     </svg>
 
     <div
+      v-if="!printMode"
       class="absolute bottom-3 left-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-1 overflow-x-auto rounded-lg border border-stone-200 bg-white/95 p-1 shadow-md backdrop-blur"
       aria-label="Plan display options"
     >
