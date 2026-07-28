@@ -14,7 +14,7 @@ const emit = defineEmits<{
 <template>
   <div
     data-free-form-control
-    class="absolute top-14 right-3 z-20 rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
+    class="absolute top-[4.25rem] right-3 z-20 rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
     :class="isClosed ? 'p-2' : 'w-56 p-3'"
   >
     <template v-if="isClosed">

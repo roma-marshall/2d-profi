@@ -26,11 +26,17 @@ import type {
 type ConfiguratorSection = 'layout' | 'decking' | 'summary'
 
 const {
+  workspace,
+  areas,
+  activeAreaId,
   config,
   areaSquareMeters,
   isSaved,
   canUndo,
   canRedo,
+  addArea,
+  closeArea,
+  selectArea,
   selectShape,
   updateDimension,
   setFreeForm,
@@ -45,7 +51,7 @@ const {
   setBoardGap,
   setBoardOffset,
   setStartEdge,
-  replaceConfig,
+  replaceWorkspace,
   undo,
   redo,
   resetConfig,
@@ -120,6 +126,28 @@ const handleShapeSelection = (
   activeDimensionKey.value = null
   activeSpecialElementId.value = null
   selectShape(shape)
+}
+
+const handleAreaSelection = (areaId: string): void => {
+  selectArea(areaId)
+  activeDimensionKey.value = null
+  activeSpecialElementId.value = null
+}
+
+const handleAreaAdd = (): void => {
+  addArea()
+  activeSection.value = 'layout'
+  activeDimensionKey.value = null
+  activeSpecialElementId.value = null
+}
+
+const handleAreaClose = (areaId: string): void => {
+  if (!closeArea(areaId)) {
+    return
+  }
+
+  activeDimensionKey.value = null
+  activeSpecialElementId.value = null
 }
 
 const handleDimensionActivation = (key: string | null): void => {
@@ -243,7 +271,7 @@ const handleSpecialElementRemove = (id: string): void => {
 }
 
 const exportConfig = (): void => {
-  const blob = new Blob([JSON.stringify(config.value, null, 2)], {
+  const blob = new Blob([JSON.stringify(workspace.value, null, 2)], {
     type: 'application/json',
   })
   const url = URL.createObjectURL(blob)
@@ -258,7 +286,7 @@ const exportConfig = (): void => {
 const handleConfigImport = async (file: File): Promise<void> => {
   try {
     const parsed = JSON.parse(await file.text()) as unknown
-    if (!replaceConfig(parsed)) {
+    if (!replaceWorkspace(parsed)) {
       throw new TypeError('Unsupported terrace configuration')
     }
 
@@ -349,11 +377,16 @@ onBeforeUnmount(() => {
       >
         <TerracePreview
           :config="config"
+          :areas="areas"
+          :active-area-id="activeAreaId"
           :active-dimension-key="activeDimensionKey"
           :can-undo="canUndo"
           :can-redo="canRedo"
           :active-special-element-id="activeSpecialElementId"
           class="min-h-0 flex-1"
+          @add-area="handleAreaAdd"
+          @close-area="handleAreaClose"
+          @select-area="handleAreaSelection"
           @activate-dimension="handleDimensionActivation"
           @update-free-form="handleFreeFormUpdate"
           @select-special-element="handleSpecialElementSelection"

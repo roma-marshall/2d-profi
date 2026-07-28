@@ -25,6 +25,26 @@ the browser, import or export JSON, and print the result.
 
 Use Node.js 22.13 or newer.
 
+## Development Server and Browser QA
+
+- Before running `npm run dev`, check whether a reachable localhost server is
+  already serving this project. Reuse its actual URL and port instead of
+  starting another Vite process. Do not assume that an occupied default port
+  means a new server is required.
+- Start a development server only when no suitable existing project server is
+  available. Reuse the same server URL for the rest of the task and stop only
+  a server process that you started yourself.
+- Do not launch Playwright or another browser for every implementation step.
+  Prefer focused tests and type checking while iterating.
+- Use browser QA when the user explicitly requests it or when the completed
+  change materially affects rendered layout, responsive behavior, direct UI
+  interaction, browser-only APIs, or print output. Run one consolidated
+  browser pass near the end of the task and reuse the existing browser session
+  and tab instead of repeatedly opening or reconnecting to a browser.
+- For non-visual or internal changes, automated verification is sufficient
+  unless a failing test or other evidence specifically calls for browser
+  inspection.
+
 ## Project Structure
 
 - `src/components/configurator/` contains the Vue interface components.
@@ -75,5 +95,6 @@ npm test
 npm run build
 ```
 
-- For visual changes, also inspect the relevant desktop and mobile layouts and
-  confirm that print output is not unintentionally affected.
+- For changes that materially affect the interface, use the consolidated
+  browser QA pass described above to inspect the relevant desktop and mobile
+  layouts and confirm that print output is not unintentionally affected.

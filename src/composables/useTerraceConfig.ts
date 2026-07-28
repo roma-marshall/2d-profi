@@ -38,12 +38,17 @@ import type {
   SpecialElement,
   SpecialElementPatch,
   SpecialElementType,
+  TerraceArea,
+  TerraceAreaSummary,
   TerraceConfig,
   TerraceDimensions,
   TerraceShape,
+  TerraceWorkspace,
   WoodTextureId,
 } from '@/types/terrace'
 
+export const TERRACE_WORKSPACE_STORAGE_KEY =
+  '2d-profi:workspace:v3'
 export const TERRACE_CONFIG_STORAGE_KEY =
   '2d-profi:config:v2'
 const LEGACY_TERRACE_CONFIG_STORAGE_KEY =
@@ -162,6 +167,12 @@ const serializeConfig = (config: TerraceConfig): string =>
 const cloneConfig = (config: TerraceConfig): TerraceConfig =>
   JSON.parse(serializeConfig(config)) as TerraceConfig
 
+const serializeWorkspace = (workspace: TerraceWorkspace): string =>
+  JSON.stringify(workspace)
+
+const cloneWorkspace = (workspace: TerraceWorkspace): TerraceWorkspace =>
+  JSON.parse(serializeWorkspace(workspace)) as TerraceWorkspace
+
 export const createDefaultTerraceConfig = (): TerraceConfig =>
   createConfig(
     DEFAULT_SHAPE,
@@ -227,24 +238,144 @@ export const parseTerraceConfig = (value: unknown): TerraceConfig | null => {
   return config
 }
 
-const readStoredConfig = (storage: Storage | null): TerraceConfig => {
+const createSingleAreaWorkspace = (
+  config: TerraceConfig,
+): TerraceWorkspace => ({
+  version: 3,
+  activeAreaId: 'area-1',
+  areas: [
+    {
+      id: 'area-1',
+      name: 'Area 1',
+      config,
+    },
+  ],
+})
+
+export const createDefaultTerraceWorkspace = (): TerraceWorkspace =>
+  createSingleAreaWorkspace(createDefaultTerraceConfig())
+
+const normalizeAreaName = (
+  value: unknown,
+  fallback: string,
+): string => {
+  if (typeof value !== 'string') {
+    return fallback
+  }
+
+  const normalized = value.trim().slice(0, 40)
+  return normalized.length > 0 ? normalized : fallback
+}
+
+const createAvailableAreaId = (
+  preferredId: unknown,
+  index: number,
+  usedIds: ReadonlySet<string>,
+): string => {
+  if (
+    typeof preferredId === 'string' &&
+    /^[a-zA-Z0-9_-]{1,64}$/.test(preferredId) &&
+    !usedIds.has(preferredId)
+  ) {
+    return preferredId
+  }
+
+  let suffix = index + 1
+  while (usedIds.has(`area-${suffix}`)) {
+    suffix += 1
+  }
+  return `area-${suffix}`
+}
+
+export const parseTerraceWorkspace = (
+  value: unknown,
+): TerraceWorkspace | null => {
+  const legacyConfig = parseTerraceConfig(value)
+  if (legacyConfig !== null) {
+    return createSingleAreaWorkspace(legacyConfig)
+  }
+
+  if (!isRecord(value) || !Array.isArray(value.areas)) {
+    return null
+  }
+
+  const areas: TerraceArea[] = []
+  const usedIds = new Set<string>()
+  for (const [index, candidate] of value.areas.entries()) {
+    if (!isRecord(candidate)) {
+      return null
+    }
+
+    const config = parseTerraceConfig(candidate.config)
+    if (config === null) {
+      return null
+    }
+
+    const id = createAvailableAreaId(candidate.id, index, usedIds)
+    usedIds.add(id)
+    areas.push({
+      id,
+      name: normalizeAreaName(candidate.name, `Area ${index + 1}`),
+      config,
+    })
+  }
+
+  if (areas.length === 0) {
+    return null
+  }
+
+  const activeAreaId =
+    typeof value.activeAreaId === 'string' &&
+    areas.some((area) => area.id === value.activeAreaId)
+      ? value.activeAreaId
+      : areas[0]?.id
+  if (activeAreaId === undefined) {
+    return null
+  }
+
+  return {
+    version: 3,
+    activeAreaId,
+    areas,
+  }
+}
+
+const readStoredWorkspace = (
+  storage: Storage | null,
+): TerraceWorkspace => {
   if (storage === null) {
-    return createDefaultTerraceConfig()
+    return createDefaultTerraceWorkspace()
   }
 
   try {
-    const serialized =
+    const serializedWorkspace = storage.getItem(
+      TERRACE_WORKSPACE_STORAGE_KEY,
+    )
+    if (serializedWorkspace !== null) {
+      const parsedWorkspace = parseTerraceWorkspace(
+        JSON.parse(serializedWorkspace) as unknown,
+      )
+      if (parsedWorkspace !== null) {
+        return parsedWorkspace
+      }
+    }
+
+    const serializedConfig =
       storage.getItem(TERRACE_CONFIG_STORAGE_KEY) ??
       storage.getItem(LEGACY_TERRACE_CONFIG_STORAGE_KEY) ??
       storage.getItem(OLDEST_TERRACE_CONFIG_STORAGE_KEY)
-    if (serialized === null) {
-      return createDefaultTerraceConfig()
+    if (serializedConfig === null) {
+      return createDefaultTerraceWorkspace()
     }
 
-    const parsed = parseTerraceConfig(JSON.parse(serialized) as unknown)
-    return parsed ?? createDefaultTerraceConfig()
+    const parsedConfig = parseTerraceConfig(
+      JSON.parse(serializedConfig) as unknown,
+    )
+    return parsedConfig === null
+      ? createDefaultTerraceWorkspace()
+      : createSingleAreaWorkspace(parsedConfig)
   } catch {
-    return createDefaultTerraceConfig()
+    return createDefaultTerraceWorkspace()
   }
 }
 
@@ -333,11 +464,17 @@ export const calculateAreaSquareCentimeters = (
   )
 
 export interface UseTerraceConfigReturn {
-  config: Ref<TerraceConfig>
+  workspace: Ref<TerraceWorkspace>
+  areas: ComputedRef<readonly TerraceAreaSummary[]>
+  activeAreaId: ComputedRef<string>
+  config: ComputedRef<TerraceConfig>
   areaSquareMeters: ComputedRef<number>
   isSaved: Ref<boolean>
   canUndo: ComputedRef<boolean>
   canRedo: ComputedRef<boolean>
+  addArea: () => string
+  closeArea: (areaId: string) => boolean
+  selectArea: (areaId: string) => void
   selectShape: (shape: TerraceShape) => void
   updateDimension: (key: string, value: number) => void
   setFreeForm: (vertices: readonly Point[], closed: boolean) => boolean
@@ -356,6 +493,7 @@ export interface UseTerraceConfigReturn {
   setBoardOffset: (offset: number) => void
   setStartEdge: (edgeId: string) => void
   replaceConfig: (value: unknown) => boolean
+  replaceWorkspace: (value: unknown) => boolean
   undo: () => void
   redo: () => void
   resetConfig: () => void
@@ -363,14 +501,51 @@ export interface UseTerraceConfigReturn {
 
 export const useTerraceConfig = (): UseTerraceConfigReturn => {
   const storage = getLocalStorage()
-  const config = ref<TerraceConfig>(
-    readStoredConfig(storage),
-  ) as Ref<TerraceConfig>
+  const workspace = ref<TerraceWorkspace>(
+    readStoredWorkspace(storage),
+  ) as Ref<TerraceWorkspace>
   const isSaved = ref(false)
-  const undoStack = ref<TerraceConfig[]>([])
-  const redoStack = ref<TerraceConfig[]>([])
+  const undoStacks = ref<Record<string, TerraceConfig[]>>({})
+  const redoStacks = ref<Record<string, TerraceConfig[]>>({})
 
-  const persistConfig = (nextConfig: TerraceConfig): void => {
+  const activeArea = computed<TerraceArea>(() => {
+    const area =
+      workspace.value.areas.find(
+        (candidate) => candidate.id === workspace.value.activeAreaId,
+      ) ?? workspace.value.areas[0]
+    if (area === undefined) {
+      throw new TypeError('Terrace workspace requires at least one area')
+    }
+    return area
+  })
+  const activeAreaId = computed(() => activeArea.value.id)
+  const areas = computed<readonly TerraceAreaSummary[]>(() =>
+    workspace.value.areas.map(({ id, name }) => ({ id, name })),
+  )
+  const config = computed(() => activeArea.value.config)
+
+  const ensureHistoryStack = (
+    stacks: Ref<Record<string, TerraceConfig[]>>,
+    areaId: string,
+  ): TerraceConfig[] => {
+    if (stacks.value[areaId] === undefined) {
+      stacks.value = {
+        ...stacks.value,
+        [areaId]: [],
+      }
+    }
+
+    return stacks.value[areaId] ?? []
+  }
+
+  const resetHistoryStacks = (): void => {
+    undoStacks.value = {}
+    redoStacks.value = {}
+  }
+
+  const persistWorkspace = (
+    nextWorkspace: TerraceWorkspace,
+  ): void => {
     if (storage === null) {
       isSaved.value = false
       return
@@ -379,14 +554,17 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     isSaved.value = false
 
     try {
-      storage.setItem(TERRACE_CONFIG_STORAGE_KEY, serializeConfig(nextConfig))
+      storage.setItem(
+        TERRACE_WORKSPACE_STORAGE_KEY,
+        serializeWorkspace(nextWorkspace),
+      )
       isSaved.value = true
     } catch {
       isSaved.value = false
     }
   }
 
-  watch(config, persistConfig, {
+  watch(workspace, persistWorkspace, {
     deep: true,
     flush: 'sync',
     immediate: true,
@@ -395,8 +573,12 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
   const areaSquareMeters = computed(
     () => calculateAreaSquareCentimeters(config.value) / 10_000,
   )
-  const canUndo = computed(() => undoStack.value.length > 0)
-  const canRedo = computed(() => redoStack.value.length > 0)
+  const canUndo = computed(
+    () => (undoStacks.value[activeAreaId.value]?.length ?? 0) > 0,
+  )
+  const canRedo = computed(
+    () => (redoStacks.value[activeAreaId.value]?.length ?? 0) > 0,
+  )
 
   const applyConfig = (
     nextConfig: TerraceConfig,
@@ -407,14 +589,104 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     }
 
     if (recordHistory) {
-      undoStack.value.push(cloneConfig(config.value))
-      if (undoStack.value.length > HISTORY_LIMIT) {
-        undoStack.value.shift()
+      const undoStack = ensureHistoryStack(
+        undoStacks,
+        activeAreaId.value,
+      )
+      undoStack.push(cloneConfig(config.value))
+      if (undoStack.length > HISTORY_LIMIT) {
+        undoStack.shift()
       }
-      redoStack.value = []
+      redoStacks.value = {
+        ...redoStacks.value,
+        [activeAreaId.value]: [],
+      }
     }
 
-    config.value = cloneConfig(nextConfig)
+    workspace.value = {
+      ...workspace.value,
+      areas: workspace.value.areas.map((area) =>
+        area.id === activeAreaId.value
+          ? { ...area, config: cloneConfig(nextConfig) }
+          : area,
+      ),
+    }
+  }
+
+  const selectArea = (areaId: string): void => {
+    if (
+      areaId === activeAreaId.value ||
+      !workspace.value.areas.some((area) => area.id === areaId)
+    ) {
+      return
+    }
+
+    workspace.value = {
+      ...workspace.value,
+      activeAreaId: areaId,
+    }
+  }
+
+  const addArea = (): string => {
+    let areaNumber = workspace.value.areas.length + 1
+    const usedIds = new Set(
+      workspace.value.areas.map((area) => area.id),
+    )
+    while (usedIds.has(`area-${areaNumber}`)) {
+      areaNumber += 1
+    }
+
+    const area: TerraceArea = {
+      id: `area-${areaNumber}`,
+      name: `Area ${areaNumber}`,
+      config: createDefaultTerraceConfig(),
+    }
+    workspace.value = {
+      ...workspace.value,
+      activeAreaId: area.id,
+      areas: [...workspace.value.areas, area],
+    }
+    ensureHistoryStack(undoStacks, area.id)
+    ensureHistoryStack(redoStacks, area.id)
+    return area.id
+  }
+
+  const closeArea = (areaId: string): boolean => {
+    const areaIndex = workspace.value.areas.findIndex(
+      (area) => area.id === areaId,
+    )
+    if (areaIndex < 0 || workspace.value.areas.length === 1) {
+      return false
+    }
+
+    const remainingAreas = workspace.value.areas.filter(
+      (area) => area.id !== areaId,
+    )
+    const nextActiveAreaId =
+      areaId === activeAreaId.value
+        ? (
+            remainingAreas[areaIndex] ??
+            remainingAreas[areaIndex - 1]
+          )?.id
+        : activeAreaId.value
+
+    if (nextActiveAreaId === undefined) {
+      return false
+    }
+
+    workspace.value = {
+      ...workspace.value,
+      activeAreaId: nextActiveAreaId,
+      areas: remainingAreas,
+    }
+
+    const remainingUndoStacks = { ...undoStacks.value }
+    const remainingRedoStacks = { ...redoStacks.value }
+    delete remainingUndoStacks[areaId]
+    delete remainingRedoStacks[areaId]
+    undoStacks.value = remainingUndoStacks
+    redoStacks.value = remainingRedoStacks
+    return true
   }
 
   const updateDecking = (patch: Partial<DeckingLayout>): void => {
@@ -721,23 +993,46 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     return true
   }
 
+  const replaceWorkspace = (value: unknown): boolean => {
+    const parsed = parseTerraceWorkspace(value)
+    if (parsed === null) {
+      return false
+    }
+
+    workspace.value = cloneWorkspace(parsed)
+    resetHistoryStacks()
+    return true
+  }
+
   const undo = (): void => {
-    const previous = undoStack.value.pop()
+    const undoStack = ensureHistoryStack(
+      undoStacks,
+      activeAreaId.value,
+    )
+    const previous = undoStack.pop()
     if (previous === undefined) {
       return
     }
 
-    redoStack.value.push(cloneConfig(config.value))
+    ensureHistoryStack(redoStacks, activeAreaId.value).push(
+      cloneConfig(config.value),
+    )
     applyConfig(previous, false)
   }
 
   const redo = (): void => {
-    const next = redoStack.value.pop()
+    const redoStack = ensureHistoryStack(
+      redoStacks,
+      activeAreaId.value,
+    )
+    const next = redoStack.pop()
     if (next === undefined) {
       return
     }
 
-    undoStack.value.push(cloneConfig(config.value))
+    ensureHistoryStack(undoStacks, activeAreaId.value).push(
+      cloneConfig(config.value),
+    )
     applyConfig(next, false)
   }
 
@@ -746,11 +1041,17 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
   }
 
   return {
+    workspace,
+    areas,
+    activeAreaId,
     config,
     areaSquareMeters,
     isSaved,
     canUndo,
     canRedo,
+    addArea,
+    closeArea,
+    selectArea,
     selectShape,
     updateDimension,
     setFreeForm,
@@ -766,6 +1067,7 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
     setBoardOffset,
     setStartEdge,
     replaceConfig,
+    replaceWorkspace,
     undo,
     redo,
     resetConfig,

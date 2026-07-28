@@ -155,6 +155,23 @@ export type TerraceConfig<
   }
 }[TShape]
 
+export interface TerraceArea {
+  id: string
+  name: string
+  config: TerraceConfig
+}
+
+export interface TerraceAreaSummary {
+  id: string
+  name: string
+}
+
+export interface TerraceWorkspace {
+  version: 3
+  activeAreaId: string
+  areas: TerraceArea[]
+}
+
 export interface Point {
   x: number
   y: number

@@ -1,5 +1,17 @@
 <script setup lang="ts">
-defineProps<{
+import {
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
+
+import type { TerraceAreaSummary } from '@/types/terrace'
+
+const props = defineProps<{
+  areas: readonly TerraceAreaSummary[]
+  activeAreaId: string
   zoom: number
   canUndo: boolean
   canRedo: boolean
@@ -9,6 +21,9 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
+  'add-area': []
+  'close-area': [areaId: string]
+  'select-area': [areaId: string]
   undo: []
   redo: []
   'zoom-in': []
@@ -16,38 +31,202 @@ const emit = defineEmits<{
   'toggle-orientation': []
   'reset-view': []
 }>()
+
+const areaTabsRef = ref<HTMLElement | null>(null)
+let areaTabsResizeObserver: ResizeObserver | undefined
+
+const findAreaTab = (areaId: string): HTMLElement | undefined =>
+  Array.from(
+    areaTabsRef.value?.querySelectorAll<HTMLElement>(
+      '[data-area-id]',
+    ) ?? [],
+  ).find((tab) => tab.dataset.areaId === areaId)
+
+const scrollAreaIntoView = (areaId: string): void => {
+  findAreaTab(areaId)?.scrollIntoView({
+    block: 'nearest',
+    inline: 'nearest',
+  })
+}
+
+const handleAreaTabKeydown = async (
+  event: KeyboardEvent,
+  areaId: string,
+): Promise<void> => {
+  const currentIndex = props.areas.findIndex((area) => area.id === areaId)
+  if (currentIndex < 0 || props.areas.length === 0) {
+    return
+  }
+
+  let nextIndex: number | null = null
+  if (event.key === 'ArrowRight') {
+    nextIndex = (currentIndex + 1) % props.areas.length
+  } else if (event.key === 'ArrowLeft') {
+    nextIndex =
+      (currentIndex - 1 + props.areas.length) % props.areas.length
+  } else if (event.key === 'Home') {
+    nextIndex = 0
+  } else if (event.key === 'End') {
+    nextIndex = props.areas.length - 1
+  }
+
+  if (nextIndex === null) {
+    return
+  }
+
+  event.preventDefault()
+  const nextArea = props.areas[nextIndex]
+  if (nextArea === undefined) {
+    return
+  }
+
+  emit('select-area', nextArea.id)
+  await nextTick()
+  findAreaTab(nextArea.id)?.focus()
+}
+
+const handleAreaClose = async (areaId: string): Promise<void> => {
+  if (props.areas.length === 1) {
+    return
+  }
+
+  emit('close-area', areaId)
+  await nextTick()
+  findAreaTab(props.activeAreaId)?.focus()
+}
+
+watch(
+  () => props.activeAreaId,
+  async (areaId) => {
+    await nextTick()
+    scrollAreaIntoView(areaId)
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  if (
+    typeof ResizeObserver === 'undefined' ||
+    areaTabsRef.value === null
+  ) {
+    return
+  }
+
+  areaTabsResizeObserver = new ResizeObserver(() => {
+    scrollAreaIntoView(props.activeAreaId)
+  })
+  areaTabsResizeObserver.observe(areaTabsRef.value)
+})
+
+onBeforeUnmount(() => {
+  areaTabsResizeObserver?.disconnect()
+})
 </script>
 
 <template>
   <div
-    class="absolute inset-x-0 top-0 z-20 flex h-11 items-center justify-between border-b border-stone-300/80 bg-white/92 px-3 backdrop-blur"
+    class="absolute inset-x-0 top-0 z-20 flex h-12 items-center justify-between gap-2 border-b border-stone-200/80 bg-white/92 px-2 backdrop-blur"
   >
-    <div class="flex h-full items-center gap-1">
+    <div class="flex h-full min-w-0 flex-1 items-center gap-1">
+      <div
+        ref="areaTabsRef"
+        class="area-tabs flex h-full min-w-0 items-center gap-0.5 overflow-x-auto py-1"
+        role="tablist"
+        aria-label="Terrace areas"
+      >
+        <div
+          v-for="area in areas"
+          :key="area.id"
+          class="group flex h-8 min-w-28 max-w-40 shrink-0 items-center overflow-hidden rounded-lg border transition-colors"
+          :class="
+            area.id === activeAreaId
+              ? 'border-[#dfe8d8] bg-[#f7faf5] text-stone-800'
+              : 'border-transparent text-stone-500 hover:bg-stone-50 hover:text-stone-700'
+          "
+          role="presentation"
+        >
+          <button
+            type="button"
+            class="flex h-full min-w-0 flex-1 cursor-default items-center gap-1.5 pl-2.5 text-left text-xs font-medium outline-none"
+            :class="areas.length > 1 ? 'pr-1' : 'pr-3'"
+            role="tab"
+            :data-area-id="area.id"
+            :aria-selected="area.id === activeAreaId"
+            :tabindex="area.id === activeAreaId ? 0 : -1"
+            @click="emit('select-area', area.id)"
+            @keydown="handleAreaTabKeydown($event, area.id)"
+          >
+            <span
+              class="size-1.5 shrink-0 rounded-full"
+              :class="
+                area.id === activeAreaId
+                  ? 'bg-[#78965e]'
+                  : 'bg-stone-300'
+              "
+              aria-hidden="true"
+            />
+            <span class="truncate">{{ area.name }}</span>
+          </button>
+
+          <button
+            v-if="areas.length > 1"
+            type="button"
+            class="mr-1 grid size-5 shrink-0 place-items-center rounded-md text-stone-400 outline-none transition hover:bg-stone-200/60 hover:text-stone-700 focus-visible:bg-stone-200/60 focus-visible:ring-2 focus-visible:ring-[#78965e]"
+            :aria-label="`Close ${area.name}`"
+            :title="`Close ${area.name}`"
+            @click.stop="handleAreaClose(area.id)"
+          >
+            <svg
+              class="size-3"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M5 5L15 15M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <button
         type="button"
-        class="flex h-full items-center gap-2 border-b-2 border-[#648349] px-3 text-xs font-bold text-stone-900"
-        aria-current="page"
+        class="grid size-8 shrink-0 place-items-center rounded-lg text-stone-400 outline-none transition hover:bg-stone-50 hover:text-stone-700 focus-visible:bg-stone-50 focus-visible:ring-2 focus-visible:ring-[#78965e]"
+        aria-label="Add new area"
+        title="Add new area"
+        @click="emit('add-area')"
       >
-        <span class="size-2 rounded-full bg-[#648349]" aria-hidden="true" />
-        Area 1
+        <svg
+          class="size-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M12 5V19M5 12H19" />
+        </svg>
       </button>
     </div>
 
     <div
-      class="inline-flex rounded-md border border-stone-200 bg-stone-100 p-0.5 text-[0.6875rem] font-bold"
+      class="ml-1 inline-flex shrink-0 rounded-md border border-stone-200 bg-stone-50/80 p-0.5 text-[0.625rem] font-semibold"
       aria-label="View mode"
     >
-      <span class="rounded bg-white px-3 py-1.5 text-stone-900 shadow-sm">
+      <span class="rounded bg-white px-2 py-1 text-stone-700 shadow-sm">
         2D
       </span>
-      <span class="w-12 text-center px-2 py-1.5 tabular-nums text-stone-500">
+      <span class="w-10 px-1.5 py-1 text-center tabular-nums text-stone-400">
         {{ Math.round(zoom * 100) }}%
       </span>
     </div>
   </div>
 
   <div
-    class="absolute top-14 left-3 z-20 grid overflow-hidden rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
+    class="absolute top-[3.75rem] left-3 z-20 grid overflow-hidden rounded-lg border border-stone-200 bg-white/95 shadow-md backdrop-blur"
     aria-label="Canvas zoom controls"
   >
     <button
@@ -144,6 +323,18 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.area-tabs {
+  scrollbar-width: none;
+}
+
+.area-tabs [role='tab'] {
+  cursor: default;
+}
+
+.area-tabs::-webkit-scrollbar {
+  display: none;
+}
+
 .canvas-tool {
   display: grid;
   width: 2.5rem;

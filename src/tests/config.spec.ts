@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createDefaultTerraceConfig,
+  createDefaultTerraceWorkspace,
   parseTerraceConfig,
+  parseTerraceWorkspace,
   useTerraceConfig,
 } from '@/composables/useTerraceConfig'
 import { DEFAULT_DECKING_LAYOUT } from '@/data/decking'
@@ -125,6 +127,67 @@ describe('terrace configuration migration', () => {
       stemDepth: 500,
     })
   })
+
+  it('wraps a legacy single plan in Area 1', () => {
+    const parsed = parseTerraceWorkspace({
+      shape: 'circle',
+      dimensions: { diameter: 420 },
+      texture: 'smoked-ash',
+      boardDirection: 'vertical',
+    })
+
+    expect(parsed).toMatchObject({
+      version: 3,
+      activeAreaId: 'area-1',
+      areas: [
+        {
+          id: 'area-1',
+          name: 'Area 1',
+          config: {
+            shape: 'circle',
+            dimensions: { diameter: 420 },
+          },
+        },
+      ],
+    })
+  })
+
+  it('parses a multi-area workspace and keeps its active area', () => {
+    const defaultConfig = createDefaultTerraceConfig()
+    const parsed = parseTerraceWorkspace({
+      version: 3,
+      activeAreaId: 'area-2',
+      areas: [
+        {
+          id: 'area-1',
+          name: 'Area 1',
+          config: defaultConfig,
+        },
+        {
+          id: 'area-2',
+          name: 'Area 2',
+          config: {
+            ...defaultConfig,
+            dimensions: { width: 720, depth: 460 },
+          },
+        },
+      ],
+    })
+
+    expect(parsed).toMatchObject({
+      activeAreaId: 'area-2',
+      areas: [
+        { id: 'area-1', name: 'Area 1' },
+        {
+          id: 'area-2',
+          name: 'Area 2',
+          config: {
+            dimensions: { width: 720, depth: 460 },
+          },
+        },
+      ],
+    })
+  })
 })
 
 describe('configuration history', () => {
@@ -177,6 +240,148 @@ describe('configuration history', () => {
 
     terrace.undo()
     expect(terrace.config.value.shape).toBe('rectangle')
+  })
+})
+
+describe('terrace areas', () => {
+  it('creates sequential tabs with independent configurations', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.updateDimension('width', 640)
+    const secondAreaId = terrace.addArea()
+
+    expect(secondAreaId).toBe('area-2')
+    expect(terrace.activeAreaId.value).toBe('area-2')
+    expect(terrace.areas.value).toEqual([
+      { id: 'area-1', name: 'Area 1' },
+      { id: 'area-2', name: 'Area 2' },
+    ])
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 500, depth: 350 },
+    })
+
+    terrace.updateDimension('width', 720)
+    terrace.selectArea('area-1')
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 640, depth: 350 },
+    })
+
+    terrace.selectArea('area-2')
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 720, depth: 350 },
+    })
+  })
+
+  it('selects the nearest area when the active tab is closed', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.addArea()
+    terrace.addArea()
+    terrace.selectArea('area-2')
+
+    expect(terrace.closeArea('area-2')).toBe(true)
+    expect(terrace.activeAreaId.value).toBe('area-3')
+    expect(terrace.areas.value).toEqual([
+      { id: 'area-1', name: 'Area 1' },
+      { id: 'area-3', name: 'Area 3' },
+    ])
+
+    expect(terrace.closeArea('area-3')).toBe(true)
+    expect(terrace.activeAreaId.value).toBe('area-1')
+  })
+
+  it('keeps the active area when another tab closes and protects the last tab', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.addArea()
+
+    expect(terrace.closeArea('area-1')).toBe(true)
+    expect(terrace.activeAreaId.value).toBe('area-2')
+    expect(terrace.closeArea('area-2')).toBe(false)
+    expect(terrace.closeArea('missing-area')).toBe(false)
+    expect(terrace.areas.value).toEqual([
+      { id: 'area-2', name: 'Area 2' },
+    ])
+  })
+
+  it('discards history for a closed area before its id is reused', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.addArea()
+    terrace.updateDimension('width', 720)
+    expect(terrace.canUndo.value).toBe(true)
+
+    expect(terrace.closeArea('area-2')).toBe(true)
+    expect(terrace.addArea()).toBe('area-2')
+    expect(terrace.canUndo.value).toBe(false)
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 500, depth: 350 },
+    })
+  })
+
+  it('keeps undo and redo history separate for each area', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.updateDimension('width', 640)
+    terrace.addArea()
+    terrace.updateDimension('width', 720)
+    terrace.undo()
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 500 },
+    })
+    expect(terrace.canRedo.value).toBe(true)
+
+    terrace.selectArea('area-1')
+    expect(terrace.canUndo.value).toBe(true)
+    expect(terrace.canRedo.value).toBe(false)
+    terrace.undo()
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 500 },
+    })
+
+    terrace.selectArea('area-2')
+    terrace.redo()
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 720 },
+    })
+  })
+
+  it('replaces the full workspace while accepting legacy files', () => {
+    const terrace = useTerraceConfig()
+    const workspace = createDefaultTerraceWorkspace()
+    const secondConfig = createDefaultTerraceConfig()
+    if (secondConfig.shape !== 'rectangle') {
+      throw new TypeError('Expected the default rectangle configuration')
+    }
+    secondConfig.dimensions = { width: 800, depth: 450 }
+    workspace.areas.push({
+      id: 'area-2',
+      name: 'Area 2',
+      config: secondConfig,
+    })
+    workspace.activeAreaId = 'area-2'
+
+    expect(terrace.replaceWorkspace(workspace)).toBe(true)
+    expect(terrace.activeAreaId.value).toBe('area-2')
+    expect(terrace.config.value).toMatchObject({
+      dimensions: { width: 800, depth: 450 },
+    })
+
+    expect(
+      terrace.replaceWorkspace({
+        shape: 'circle',
+        dimensions: { diameter: 600 },
+        texture: 'natural-oak',
+        boardDirection: 'horizontal',
+      }),
+    ).toBe(true)
+    expect(terrace.areas.value).toEqual([
+      { id: 'area-1', name: 'Area 1' },
+    ])
+    expect(terrace.config.value).toMatchObject({
+      shape: 'circle',
+      dimensions: { diameter: 600 },
+    })
   })
 })
 

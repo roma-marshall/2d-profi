@@ -24,20 +24,33 @@ import type {
   Point,
   SpecialElement,
   SpecialElementPatch,
+  TerraceAreaSummary,
   TerraceConfig,
   TerraceDimensions,
 } from '@/types/terrace'
 
-const props = defineProps<{
-  config: TerraceConfig
-  activeDimensionKey: string | null
-  activeSpecialElementId: string | null
-  canUndo: boolean
-  canRedo: boolean
-  printMode?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    config: TerraceConfig
+    areas?: readonly TerraceAreaSummary[]
+    activeAreaId?: string
+    activeDimensionKey: string | null
+    activeSpecialElementId: string | null
+    canUndo: boolean
+    canRedo: boolean
+    printMode?: boolean
+  }>(),
+  {
+    areas: () => [],
+    activeAreaId: '',
+    printMode: false,
+  },
+)
 
 const emit = defineEmits<{
+  'add-area': []
+  'close-area': [areaId: string]
+  'select-area': [areaId: string]
   'activate-dimension': [key: string | null]
   'update-free-form': [
     payload: { vertices: readonly Point[]; closed: boolean },
@@ -689,7 +702,7 @@ const removeFreeFormVertex = (index: number): void => {
 }
 
 watch(
-  () => props.config.shape,
+  () => [props.activeAreaId, props.config.shape] as const,
   () => {
     resetView()
     freeFormDraftVertices.value = null
@@ -709,12 +722,17 @@ watch(
   >
     <TerraceViewportControls
       v-if="!printMode"
+      :areas="areas"
+      :active-area-id="activeAreaId"
       :zoom="zoom"
       :can-undo="canUndo"
       :can-redo="canRedo"
       :min-zoom="MIN_ZOOM"
       :max-zoom="MAX_ZOOM"
       :is-plan-rotated="isPlanRotated"
+      @add-area="emit('add-area')"
+      @close-area="emit('close-area', $event)"
+      @select-area="emit('select-area', $event)"
       @undo="emit('undo')"
       @redo="emit('redo')"
       @zoom-in="setZoom(zoom + 0.25)"
@@ -737,7 +755,7 @@ watch(
       :class="[
         printMode
           ? 'absolute inset-0 h-full min-h-0 w-full'
-          : 'absolute inset-x-0 top-11 bottom-0 h-[calc(100%-2.75rem)] min-h-[386px] w-full touch-pan-y lg:min-h-0',
+          : 'absolute inset-x-0 top-12 bottom-0 h-[calc(100%-3rem)] min-h-[382px] w-full touch-pan-y lg:min-h-0',
         printMode
           ? ''
           : isPanning || draggedSpecialElementId !== null
