@@ -287,6 +287,17 @@ const createAvailableAreaId = (
   return `area-${suffix}`
 }
 
+const createAvailableAreaName = (
+  areas: readonly TerraceArea[],
+): string => {
+  const usedNames = new Set(areas.map((area) => area.name))
+  let suffix = 1
+  while (usedNames.has(`Area ${suffix}`)) {
+    suffix += 1
+  }
+  return `Area ${suffix}`
+}
+
 export const parseTerraceWorkspace = (
   value: unknown,
 ): TerraceWorkspace | null => {
@@ -628,17 +639,14 @@ export const useTerraceConfig = (): UseTerraceConfigReturn => {
   }
 
   const addArea = (): string => {
-    let areaNumber = workspace.value.areas.length + 1
     const usedIds = new Set(
       workspace.value.areas.map((area) => area.id),
     )
-    while (usedIds.has(`area-${areaNumber}`)) {
-      areaNumber += 1
-    }
+    const areaId = createAvailableAreaId(undefined, 0, usedIds)
 
     const area: TerraceArea = {
-      id: `area-${areaNumber}`,
-      name: `Area ${areaNumber}`,
+      id: areaId,
+      name: createAvailableAreaName(workspace.value.areas),
       config: createDefaultTerraceConfig(),
     }
     workspace.value = {

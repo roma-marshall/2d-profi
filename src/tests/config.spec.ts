@@ -304,6 +304,21 @@ describe('terrace areas', () => {
     ])
   })
 
+  it('reuses the lowest available default name for a new area', () => {
+    const terrace = useTerraceConfig()
+
+    terrace.addArea()
+    terrace.addArea()
+    expect(terrace.closeArea('area-1')).toBe(true)
+
+    expect(terrace.addArea()).toBe('area-1')
+    expect(terrace.areas.value).toEqual([
+      { id: 'area-2', name: 'Area 2' },
+      { id: 'area-3', name: 'Area 3' },
+      { id: 'area-1', name: 'Area 1' },
+    ])
+  })
+
   it('discards history for a closed area before its id is reused', () => {
     const terrace = useTerraceConfig()
 
