@@ -1,0 +1,4 @@
+interface:
+  display_name: "Decompose Vue Components"
+  short_description: "Refactor Vue components without behavior changes"
+  default_prompt: "Use $decompose-vue-components to split a large Vue component into smaller focused components while preserving behavior and user flows."
